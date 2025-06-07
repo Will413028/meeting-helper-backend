@@ -1,0 +1,45 @@
+# Ignore local development environment configuration files
+.env
+.env-example
+inventory.ini
+inventory.ini-example
+
+# Ignore Git and version control files
+.git
+.gitignore
+
+# Ignore compiled Python files
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore development-specific Python files
+*.egg-info
+*.eggs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Ignore test files and directories
+tests
+
+# Ignore various IDE settings
+.vscode
+.idea
+*.swp
+*.swo
+*.sublime-workspace
+
+# Ignore logs
+logs
+*.log
+
+# Ignore data files
+data
+*.csv
+*.json
+
+# Ignore development script
+docker-compose.yml
+docker-compose.yml-example
+playbook.yml

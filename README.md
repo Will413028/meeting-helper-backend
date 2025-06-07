@@ -1,4 +1,4 @@
-# meeting-helper-backend
+curl -LsSf https://astral.sh/uv/install.sh | sh# meeting-helper-backend
 
 
 
