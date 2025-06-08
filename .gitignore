@@ -139,3 +139,13 @@ data/
 docker-compose.yml
 
 inventory.ini
+
+# Project specific
+uploads/
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.ogg
+*.mp4
+*.webm
