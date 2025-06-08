@@ -215,3 +215,29 @@ async def list_tasks():
     """List all transcription tasks"""
     tasks = [task.to_dict() for task in task_manager.tasks.values()]
     return {"count": len(tasks), "tasks": tasks}
+
+
+@app.get("/disk-space")
+async def get_disk_space():
+    """Get remaining disk space in GB"""
+    try:
+        # Get disk usage statistics for the root filesystem
+        disk_usage = shutil.disk_usage("/")
+        
+        # Convert bytes to GB (1 GB = 1024^3 bytes)
+        total_gb = disk_usage.total / (1024 ** 3)
+        used_gb = disk_usage.used / (1024 ** 3)
+        free_gb = disk_usage.free / (1024 ** 3)
+        
+        # Calculate percentage used
+        percent_used = (disk_usage.used / disk_usage.total) * 100
+        
+        return {
+            "total_gb": round(total_gb, 2),
+            "used_gb": round(used_gb, 2),
+            "free_gb": round(free_gb, 2),
+            "percent_used": round(percent_used, 2),
+            "mount_point": "/"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting disk space: {str(e)}")
