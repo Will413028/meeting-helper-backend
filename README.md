@@ -9,6 +9,9 @@ A FastAPI backend service for audio file transcription with speaker diarization.
 - **Speech-to-Text**: Generate accurate transcripts using OpenAI Whisper
 - **Speaker-based Transcripts**: Get transcripts organized by speaker with timestamps
 - **File Management**: Store uploaded files locally and list all uploaded files
+- **SQLite Database**: Persistent storage of transcription history and metadata
+- **Progress Tracking**: Real-time progress updates for async transcriptions
+- **Task Management**: Track and manage multiple concurrent transcription tasks
 
 ## Prerequisites
 
@@ -158,12 +161,112 @@ The following settings can be modified in `src/main.py`:
 
 3. **Memory Issues**: Large audio files may require significant RAM. Consider using smaller Whisper models or processing files in chunks.
 
-## test
+## Database Integration
+
+The backend now includes SQLAlchemy ORM with SQLite for persistent storage of transcription data:
+
+### Features
+- **SQLAlchemy ORM**: Uses SQLAlchemy for database operations with proper models and sessions
+- **Automatic Recording**: All transcriptions are automatically saved to the database
+- **Metadata Storage**: File paths, processing status, timestamps, and file sizes stored as JSON
+- **Search Capabilities**: Search by filename, task ID, or filter by status
+- **Cleanup Tools**: Remove old records and optionally delete associated files
+- **Statistics**: Track disk usage and transcription statistics
+- **Type Safety**: Proper model definitions with SQLAlchemy declarative base
+
+### Database Location
+The SQLite database is stored at: `meeting_helper.db` (in the current working directory)
+
+### Database Model
+The `Transcription` model includes:
+- `id`: Primary key
+- `task_id`: Unique task identifier
+- `filename`: Original filename
+- `audio_path`: Path to audio file
+- `srt_path`: Path to SRT file
+- `model`: Whisper model used
+- `language`: Language code
+- `status`: Processing status (pending, processing, completed, failed)
+- `progress`: Progress percentage
+- `timestamps`: created_at, started_at, completed_at
+- `extra_metadata`: JSON field for additional information
+
+### Database Migrations with Alembic
+
+The project uses Alembic for database migrations:
+
+```bash
+# Create a new migration
+alembic revision --autogenerate -m "Description of changes"
+
+# Apply migrations
+alembic upgrade head
+
+# Downgrade to previous version
+alembic downgrade -1
+
+# View migration history
+alembic history
+
+# View current version
+alembic current
+```
+
+### Migrating from Raw SQLite
+
+If you have an existing database from the previous raw SQLite implementation:
+
+```bash
+# Backup existing database
+cp meeting_helper.db meeting_helper.db.backup
+
+# Run the migration script
+python migrate_to_sqlalchemy.py
+```
+
+### Testing Database Features
+```bash
+# Test database operations
+python test_database.py
+
+# Test with an audio file
+python test_database.py audio.mp4
+```
+
+### Example Database Queries
+```bash
+# Get transcription statistics
+curl http://localhost:8000/transcriptions/stats | jq
+
+# List recent transcriptions
+curl "http://localhost:8000/transcriptions?limit=10" | jq
+
+# Search by filename
+curl "http://localhost:8000/transcription/by-filename/meeting.mp4" | jq
+
+# Clean up old records (older than 30 days)
+curl -X POST "http://localhost:8000/transcriptions/cleanup?days=30" | jq
+```
+
+## Test Examples
+
+### Basic transcription test
+```bash
 uv run ./src/whisperx_diarize.py 
+```
 
-
+### API test with curl
+```bash
 curl -X POST "http://localhost:8000/transcribe/" \
   -F "file=@audio.mp4" \
   -F "model=large-v3" \
   -F "language=zh" \
   | python -m json.tool
+```
+
+### Async transcription with progress tracking
+```bash
+python test_async_transcribe.py audio.mp4
+```
+
+For complete API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
