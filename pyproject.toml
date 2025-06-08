@@ -9,4 +9,5 @@ dependencies = [
     "python-multipart>=0.0.6",
     "pydub>=0.25.1",
     "whisperx==3.3.4",
+    "requests>=2.32.3",
 ]

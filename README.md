@@ -147,13 +147,6 @@ The following settings can be modified in `src/main.py`:
 
 3. **Language**: The transcription is currently set to Chinese (`language="zh"`). Modify this in the `transcribe_audio` function for other languages or set to `None` for auto-detection.
 
-4. **Speaker Diarization**: Uses local models for speaker identification:
-   - **Resemblyzer**: For high-quality speaker embeddings (automatically downloaded on first use)
-   - **WebRTC VAD**: For voice activity detection
-   - **Fallback**: Simple energy-based speaker separation if advanced models fail
-
-5. **No API Tokens Required**: All models run locally on your machine without requiring external API tokens.
-
 ## Troubleshooting
 
 1. **Missing FFmpeg**: If you get audio processing errors, ensure FFmpeg is installed and in your PATH.
@@ -165,10 +158,12 @@ The following settings can be modified in `src/main.py`:
 
 3. **Memory Issues**: Large audio files may require significant RAM. Consider using smaller Whisper models or processing files in chunks.
 
-## License
-
-[Your License Here]
-
-
 ## test
 uv run ./src/whisperx_diarize.py 
+
+
+curl -X POST "http://localhost:8000/transcribe/" \
+  -F "file=@audio.mp4" \
+  -F "model=large-v3" \
+  -F "language=zh" \
+  | python -m json.tool
