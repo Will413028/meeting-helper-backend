@@ -33,7 +33,3 @@ setup-env:
 	else \
 		echo ".env file already exists."; \
 	fi
-
-.PHONY: deploy-gitlab
-deploy-gitlab:
-	ansible-playbook -i ./ansible/gitlab_inventory.ini ./ansible/gitlab_playbook.yml
