@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from src.whisperx_diarize import whisperx_diarize
 from src.whisperx_diarize_async import whisperx_diarize_with_progress
 from src.task_manager import task_manager
+from src.config import settings
 
 app = FastAPI()
 
@@ -66,7 +67,7 @@ async def transcribe_audio(
             align_model="WAV2VEC2_ASR_LARGE_LV60K_960H",
             language=language,
             chunk_size=6,
-            hug_token="your_huggingface_token_here",
+            hug_token=settings.HUG_TOKEN,
             initial_prompt="",
         )
 
