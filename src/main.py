@@ -94,7 +94,11 @@ async def transcribe_audio(
                 )
 
         # Save to database
-        task_id = str(Path(file.filename).stem) + "_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        task_id = (
+            str(Path(file.filename).stem)
+            + "_"
+            + datetime.now().strftime("%Y%m%d_%H%M%S")
+        )
         db.save_transcription(
             task_id=task_id,
             filename=file.filename,
@@ -105,8 +109,10 @@ async def transcribe_audio(
             status="completed",
             extra_metadata={
                 "file_size": os.path.getsize(audio_path),
-                "srt_size": os.path.getsize(srt_file_path) if os.path.exists(srt_file_path) else 0
-            }
+                "srt_size": os.path.getsize(srt_file_path)
+                if os.path.exists(srt_file_path)
+                else 0,
+            },
         )
 
         # Return success response with file info
@@ -127,17 +133,20 @@ async def transcribe_audio(
 
 
 def process_audio_with_progress(
-    task_id: str, audio_path: str, output_dir: str, model: str, language: str, original_filename: str
+    task_id: str,
+    audio_path: str,
+    output_dir: str,
+    model: str,
+    language: str,
+    original_filename: str,
 ):
     """Background function to process audio with progress tracking"""
     try:
         task_manager.start_task(task_id)
-        
+
         # Update database status
         db.update_transcription(
-            task_id=task_id,
-            status="processing",
-            started_at=datetime.now()
+            task_id=task_id, status="processing", started_at=datetime.now()
         )
 
         def progress_callback(
@@ -151,7 +160,7 @@ def process_audio_with_progress(
                 task_id=task_id,
                 progress=progress,
                 current_step=step,
-                estimated_completion_time=estimated_completion
+                estimated_completion_time=estimated_completion,
             )
 
         # Run WhisperX with progress tracking
@@ -181,7 +190,7 @@ def process_audio_with_progress(
             "srt_path": srt_file_path,
         }
         task_manager.complete_task(task_id, result)
-        
+
         # Update database
         db.update_transcription(
             task_id=task_id,
@@ -189,20 +198,20 @@ def process_audio_with_progress(
             completed_at=datetime.now(),
             srt_path=srt_file_path,
             result=result,
-            progress=100
+            progress=100,
         )
 
     except Exception as e:
         task_manager.fail_task(task_id, str(e))
-        
+
         # Update database
         db.update_transcription(
             task_id=task_id,
             status="failed",
             completed_at=datetime.now(),
-            error_message=str(e)
+            error_message=str(e),
         )
-        
+
         # Clean up audio file on error
         if os.path.exists(audio_path):
             os.remove(audio_path)
@@ -239,7 +248,7 @@ async def transcribe_audio_async(
         shutil.copyfileobj(file.file, buffer)
 
     output_dir = settings.OUTPUT_DIR
-    
+
     # Save to database
     db.save_transcription(
         task_id=task_id,
@@ -250,13 +259,19 @@ async def transcribe_audio_async(
         status="pending",
         extra_metadata={
             "file_size": os.path.getsize(audio_path),
-            "original_filename": file.filename
-        }
+            "original_filename": file.filename,
+        },
     )
 
     # Start background processing
     background_tasks.add_task(
-        process_audio_with_progress, task_id, audio_path, output_dir, model, language, file.filename
+        process_audio_with_progress,
+        task_id,
+        audio_path,
+        output_dir,
+        model,
+        language,
+        file.filename,
     )
 
     return {
@@ -289,51 +304,51 @@ async def get_disk_space():
     try:
         # Get disk usage statistics for the root filesystem
         disk_usage = shutil.disk_usage("/")
-        
+
         # Convert bytes to GB (1 GB = 1024^3 bytes)
-        total_gb = disk_usage.total / (1024 ** 3)
-        used_gb = disk_usage.used / (1024 ** 3)
-        free_gb = disk_usage.free / (1024 ** 3)
-        
+        total_gb = disk_usage.total / (1024**3)
+        used_gb = disk_usage.used / (1024**3)
+        free_gb = disk_usage.free / (1024**3)
+
         # Calculate percentage used
         percent_used = (disk_usage.used / disk_usage.total) * 100
-        
+
         return {
             "total_gb": round(total_gb, 2),
             "used_gb": round(used_gb, 2),
             "free_gb": round(free_gb, 2),
             "percent_used": round(percent_used, 2),
-            "mount_point": "/"
+            "mount_point": "/",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting disk space: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error getting disk space: {str(e)}"
+        )
 
 
 @app.get("/transcriptions")
 async def list_transcriptions(
-    limit: int = 100,
-    offset: int = 0,
-    status: Optional[str] = None
+    limit: int = 100, offset: int = 0, status: Optional[str] = None
 ):
     """
     List all transcriptions from database with pagination
-    
+
     Args:
         limit: Maximum number of records to return (default: 100)
         offset: Number of records to skip (default: 0)
         status: Filter by status (pending, processing, completed, failed)
-    
+
     Returns:
         List of transcription records
     """
     transcriptions = db.list_transcriptions(limit=limit, offset=offset, status=status)
     total = db.count_transcriptions(status=status)
-    
+
     return {
         "total": total,
         "limit": limit,
         "offset": offset,
-        "transcriptions": transcriptions
+        "transcriptions": transcriptions,
     }
 
 
@@ -343,7 +358,7 @@ async def get_transcription(task_id: str):
     transcription = db.get_transcription(task_id)
     if not transcription:
         raise HTTPException(status_code=404, detail="Transcription not found")
-    
+
     return transcription
 
 
@@ -352,8 +367,10 @@ async def get_transcription_by_filename(filename: str):
     """Get the most recent transcription for a specific filename"""
     transcription = db.get_transcription_by_filename(filename)
     if not transcription:
-        raise HTTPException(status_code=404, detail="No transcription found for this filename")
-    
+        raise HTTPException(
+            status_code=404, detail="No transcription found for this filename"
+        )
+
     return transcription
 
 
@@ -361,7 +378,7 @@ async def get_transcription_by_filename(filename: str):
 async def delete_transcription(task_id: str, delete_files: bool = False):
     """
     Delete a transcription record
-    
+
     Args:
         task_id: The task ID to delete
         delete_files: Whether to also delete associated audio and SRT files
@@ -370,11 +387,14 @@ async def delete_transcription(task_id: str, delete_files: bool = False):
     transcription = db.get_transcription(task_id)
     if not transcription:
         raise HTTPException(status_code=404, detail="Transcription not found")
-    
+
     # Delete files if requested
     if delete_files:
         files_deleted = []
-        for file_path in [transcription.get('audio_path'), transcription.get('srt_path')]:
+        for file_path in [
+            transcription.get("audio_path"),
+            transcription.get("srt_path"),
+        ]:
             if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
@@ -382,20 +402,17 @@ async def delete_transcription(task_id: str, delete_files: bool = False):
                 except Exception as e:
                     # Log error but continue
                     print(f"Error deleting file {file_path}: {e}")
-    
+
     # Delete from database
     success = db.delete_transcription(task_id)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to delete transcription")
-    
-    response = {
-        "message": "Transcription deleted successfully",
-        "task_id": task_id
-    }
-    
+
+    response = {"message": "Transcription deleted successfully", "task_id": task_id}
+
     if delete_files:
         response["files_deleted"] = files_deleted
-    
+
     return response
 
 
@@ -403,45 +420,45 @@ async def delete_transcription(task_id: str, delete_files: bool = False):
 async def cleanup_old_transcriptions(days: int = 30, delete_files: bool = False):
     """
     Clean up transcriptions older than specified days
-    
+
     Args:
         days: Delete transcriptions older than this many days (default: 30)
         delete_files: Whether to also delete associated files
     """
     if days < 1:
         raise HTTPException(status_code=400, detail="Days must be at least 1")
-    
+
     # Get old transcriptions before deletion if we need to delete files
     files_deleted = []
     if delete_files:
         old_transcriptions = db.list_transcriptions(limit=1000)  # Get a large batch
         cutoff_date = datetime.now().timestamp() - (days * 24 * 60 * 60)
-        
+
         for trans in old_transcriptions:
             # Check if transcription is old enough
-            created_at = datetime.fromisoformat(trans['created_at']).timestamp()
+            created_at = datetime.fromisoformat(trans["created_at"]).timestamp()
             if created_at < cutoff_date:
                 # Delete associated files
-                for file_path in [trans.get('audio_path'), trans.get('srt_path')]:
+                for file_path in [trans.get("audio_path"), trans.get("srt_path")]:
                     if file_path and os.path.exists(file_path):
                         try:
                             os.remove(file_path)
                             files_deleted.append(file_path)
                         except Exception as e:
                             print(f"Error deleting file {file_path}: {e}")
-    
+
     # Clean up database records
     deleted_count = db.cleanup_old_transcriptions(days=days)
-    
+
     response = {
         "message": f"Cleaned up {deleted_count} transcriptions older than {days} days",
-        "deleted_count": deleted_count
+        "deleted_count": deleted_count,
     }
-    
+
     if delete_files:
         response["files_deleted"] = len(files_deleted)
         response["file_paths"] = files_deleted
-    
+
     return response
 
 
@@ -453,16 +470,16 @@ async def get_transcription_stats():
     processing = db.count_transcriptions(status="processing")
     completed = db.count_transcriptions(status="completed")
     failed = db.count_transcriptions(status="failed")
-    
+
     disk_stats = db.get_disk_usage_stats()
-    
+
     return {
         "total_transcriptions": total,
         "by_status": {
             "pending": pending,
             "processing": processing,
             "completed": completed,
-            "failed": failed
+            "failed": failed,
         },
-        "disk_usage": disk_stats
+        "disk_usage": disk_stats,
     }
