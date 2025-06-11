@@ -1,7 +1,6 @@
-from sqlalchemy import create_engine, String, JSON
+from sqlalchemy import String, JSON
 from sqlalchemy.orm import (
     declarative_base,
-    sessionmaker,
     Mapped,
     mapped_column,
 )
@@ -10,16 +9,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import os
 from src.constants import Role
-from src.config import settings
 
 Base = declarative_base()
-
-DATABASE_URL = f"sqlite:///{os.path.join(settings.OUTPUT_DIR, 'meeting_helper.db')}"
-
-# engine = create_engine(DATABASE_URL,connect_args={"check_same_thread": False}, echo=True)
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Transcription(Base):
@@ -48,7 +39,7 @@ class User(Base):
     __tablename__ = "users"
 
     user_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name : Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
     account: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[int] = mapped_column(server_default=str(Role.USER.value))

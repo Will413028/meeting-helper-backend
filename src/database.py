@@ -1,33 +1,36 @@
-from sqlalchemy import create_engine
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from sqlalchemy.orm import (
     declarative_base,
-    sessionmaker,
-    Session,
 )
 
 
-from typing import Iterator
 import os
 
 from src.config import settings
 
 Base = declarative_base()
 
-DATABASE_URL = f"sqlite:///{os.path.join(settings.OUTPUT_DIR, 'meeting_helper.db')}"
+DATABASE_URL = (
+    f"sqlite+aiosqlite:///{os.path.join(settings.OUTPUT_DIR, 'meeting_helper.db')}"
+)
 
-# engine = create_engine(DATABASE_URL,connect_args={"check_same_thread": False}, echo=True)
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_async_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    pool_pre_ping=True,
+    echo=True,
+)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    autoflush=False,
+    future=True,
+)
 
 
-def get_db_session() -> Iterator[Session]:
-    session = SessionLocal()
-    try:
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
         yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
