@@ -11,7 +11,6 @@ from src.auth.schemas import (
 )
 from src.auth.utils import get_password_hash, verify_password
 from src.config import settings
-from src.constants import Role
 from src.models import User
 
 
@@ -58,7 +57,7 @@ async def create_user(
                     "name": user.name,
                     "account": user.account,
                     "password": user.password,
-                    "role": Role.USER.value,
+                    "group_id": user.group_id,
                 }
             )
             .returning(User)
@@ -99,11 +98,6 @@ async def reset_password(reset_data: UpdatePasswordRequest, session: AsyncSessio
         if not db_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-            )
-
-        if db_user.role != Role.USER.value:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Invalid role"
             )
 
         db_user.password = await get_password_hash(password=reset_data.password)

@@ -10,6 +10,7 @@ class CreateUserRequest(BaseModel):
     name: str
     account: str
     password: str
+    group_id: int
 
     model_config = {
         "json_schema_extra": {
@@ -18,6 +19,7 @@ class CreateUserRequest(BaseModel):
                     "name": "John Doe",
                     "account": "account1",
                     "password": "password123",
+                    "group_id": 1,
                 }
             ]
         }
