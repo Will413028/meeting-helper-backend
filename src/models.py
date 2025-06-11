@@ -1,4 +1,4 @@
-from sqlalchemy import String, JSON
+from sqlalchemy import String, JSON, ForeignKey
 from sqlalchemy.orm import (
     declarative_base,
     Mapped,
@@ -40,8 +40,12 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     account: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.group_id"))
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    group_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
     role: Mapped[int] = mapped_column(server_default=str(Role.USER.value))
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now()
-    )
