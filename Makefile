@@ -1,10 +1,10 @@
 .PHONY: run
 run:
-	uv run fastapi dev ./src/main.py
+	uv run fastapi dev ./src/main.py --host 0.0.0.0 --port 8701
 
 .PHONY: run-prod
 run-prod:
-	uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
+	uv run uvicorn src.main:app --host 0.0.0.0 --port 8701
 
 .PHONY: lint
 lint:
@@ -33,3 +33,12 @@ setup-env:
 	else \
 		echo ".env file already exists."; \
 	fi
+
+.PHONY: migration
+migration:
+	uv run alembic upgrade head
+
+.PHONY: generate_migration
+generate_migration:
+	@read -p "Enter migration name: " migration_name; \
+	uv run alembic revision --autogenerate -m "$${migration_name}"
