@@ -14,6 +14,7 @@ from src.group.service import (
     create_group,
     get_group_by_name,
     update_groups,
+    delete_groups,
 )
 from src.database import get_db_session
 from src.logger import logger
@@ -95,6 +96,29 @@ async def _update_groups(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except Exception as exc:
         logger.error("Update group error")
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.delete(
+    "/v1/groups",
+    response_model=DetailResponse,
+)
+async def _delete_groups(
+    group_ids: Annotated[list[str], Body()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    try:
+        await delete_groups(session=session, group_ids=group_ids)
+
+        return DetailResponse(detail="Delete group successfully")
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
         logger.exception(exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
