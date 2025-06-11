@@ -1,4 +1,4 @@
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.group.schemas import CreateGroupRequest, UpdateGroupsRequest
@@ -42,6 +42,17 @@ async def update_groups(groups_data: UpdateGroupsRequest, session: AsyncSession)
             )
             await session.execute(update_query)
 
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
+async def delete_groups(session: AsyncSession, group_ids: list[str]):
+    try:
+        delete_query = delete(Group).where(Group.group_id.in_(group_ids))
+        await session.execute(delete_query)
         await session.commit()
 
     except Exception as e:
