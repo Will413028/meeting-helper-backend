@@ -29,7 +29,7 @@ from src.logger import logger
 from src.schemas import DetailResponse
 
 router = APIRouter(
-    tags=["user"],
+    tags=["users"],
 )
 
 
@@ -112,11 +112,36 @@ async def _login(
         return Token(access_token=access_token)
 
     except HTTPException as exc:
-        logger.error("login error")
         logger.exception(exc)
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except Exception as exc:
-        logger.error("login error")
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+@router.post("/token")
+async def login_for_access_token(
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> Token:
+    try:
+        user = await authenticate_user(
+            session=session, account=form_data.username, password=form_data.password
+        )
+
+        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+
+        access_token = await create_access_token(
+            data={"sub": user.account}, expires_delta=access_token_expires
+        )
+
+        return Token(access_token=access_token)
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
         logger.exception(exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
