@@ -13,6 +13,7 @@ from src.group.schemas import CreateGroupRequest, GetGroupResponse, UpdateGroups
 from src.group.service import (
     create_group,
     get_group_by_name,
+    get_groups,
     update_groups,
     delete_groups,
 )
@@ -33,7 +34,17 @@ async def _get_groups(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
-        return await get_group(group_data=group_data, session=session)
+        groups = await get_groups(session=session)
+
+        # Convert to response format
+        groups_data = [
+            GetGroupResponse(group_id=group.group_id, name=group.name, role=group.role)
+            for group in groups
+        ]
+
+        return PaginatedDataResponse(
+            data=groups_data, total=len(groups_data), page=1, per_page=len(groups_data)
+        )
 
     except HTTPException as exc:
         logger.error("get_groups error")
@@ -56,7 +67,7 @@ async def _create_group(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
-        db_group = await get_group_by_name(session=session, account=group_data.name)
+        db_group = await get_group_by_name(session=session, name=group_data.name)
 
         if db_group:
             raise HTTPException(
@@ -113,7 +124,7 @@ async def _delete_groups(
     try:
         await delete_groups(session=session, group_ids=group_ids)
 
-        return DetailResponse(detail="Delete group successfully")
+        return DetailResponse(detail="Groups moved to 未分類 successfully")
 
     except HTTPException as exc:
         logger.exception(exc)
