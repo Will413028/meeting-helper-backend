@@ -126,7 +126,7 @@ def process_audio_with_progress(
             os.remove(audio_path)
 
 
-@router.post("/transcribe/async")
+@router.post("/v1/transcribe/async")
 async def transcribe_audio_async(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -192,7 +192,7 @@ async def transcribe_audio_async(
     }
 
 
-@router.get("/task/{task_id}")
+@router.get("/v1/task/{task_id}")
 async def get_task_status(task_id: str):
     """Get the status and progress of a transcription task"""
     task = task_manager.get_task(task_id)
@@ -202,14 +202,14 @@ async def get_task_status(task_id: str):
     return task.to_dict()
 
 
-@router.get("/tasks")
+@router.get("/v1/tasks")
 async def list_tasks():
     """List all transcription tasks"""
     tasks = [task.to_dict() for task in task_manager.tasks.values()]
     return {"count": len(tasks), "tasks": tasks}
 
 
-@router.get("/disk-space")
+@router.get("/v1/disk-space")
 async def get_disk_space():
     """Get remaining disk space in GB"""
     try:
@@ -237,7 +237,7 @@ async def get_disk_space():
         )
 
 
-@router.get("/transcriptions")
+@router.get("/v1/transcriptions")
 async def list_transcriptions_endpoint(
     limit: int = 100,
     offset: int = 0,
@@ -268,7 +268,7 @@ async def list_transcriptions_endpoint(
     }
 
 
-@router.get("/transcription/{task_id}")
+@router.get("/v1/transcription/{task_id}")
 async def get_transcription_endpoint(
     task_id: str, session: AsyncSession = Depends(get_db_session)
 ):
@@ -280,7 +280,7 @@ async def get_transcription_endpoint(
     return transcription
 
 
-@router.get("/transcription/by-filename/{filename}")
+@router.get("/v1/transcription/by-filename/{filename}")
 async def get_transcription_by_filename_endpoint(
     filename: str, session: AsyncSession = Depends(get_db_session)
 ):
@@ -294,7 +294,7 @@ async def get_transcription_by_filename_endpoint(
     return transcription
 
 
-@router.delete("/transcription/{task_id}")
+@router.delete("/v1/transcription/{task_id}")
 async def delete_transcription_endpoint(
     task_id: str,
     delete_files: bool = False,
@@ -340,7 +340,7 @@ async def delete_transcription_endpoint(
     return response
 
 
-@router.post("/transcriptions/cleanup")
+@router.post("/v1/transcriptions/cleanup")
 async def cleanup_old_transcriptions_endpoint(
     days: int = 30,
     delete_files: bool = False,
@@ -392,7 +392,7 @@ async def cleanup_old_transcriptions_endpoint(
     return response
 
 
-@router.get("/transcriptions/stats")
+@router.get("/v1/transcriptions/stats")
 async def get_transcription_stats(session: AsyncSession = Depends(get_db_session)):
     """Get statistics about transcriptions"""
     total = await count_transcriptions(session)
