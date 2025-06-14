@@ -9,8 +9,13 @@ from sqlalchemy import (
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas import PaginatedDataResponse
-from src.group.schemas import CreateGroupRequest, UpdateGroupsRequest, GetGroupResponse
+from src.schemas import PaginatedDataResponse, ListDataResponse
+from src.group.schemas import (
+    CreateGroupRequest,
+    UpdateGroupsRequest,
+    GetGroupResponse,
+    GetSimpleGroupResponse,
+)
 from src.models import User, Group
 from src.constants import Role
 
@@ -166,3 +171,18 @@ async def delete_groups(session: AsyncSession, group_ids: list[str]):
     except Exception as e:
         await session.rollback()
         raise e
+
+
+async def get_simple_groups(
+    session: AsyncSession,
+) -> ListDataResponse[GetSimpleGroupResponse]:
+    query = select(
+        Group.group_id,
+        Group.name,
+    )
+
+    results = (await session.execute(query)).mappings().all()
+
+    return ListDataResponse[GetSimpleGroupResponse](
+        data=results,
+    )

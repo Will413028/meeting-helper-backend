@@ -14,6 +14,7 @@ from src.group.schemas import (
     CreateGroupRequest,
     GetGroupResponse,
     UpdateGroupsRequest,
+    GetSimpleGroupResponse,
     GetGroupsParams,
 )
 from src.group.service import (
@@ -24,12 +25,14 @@ from src.group.service import (
     update_groups,
     delete_groups,
     create_uncategorized_group,
+    get_simple_groups,
 )
 from src.database import get_db_session
 from src.logger import logger
 from src.schemas import (
     DetailResponse,
     PaginatedDataResponse,
+    ListDataResponse,
 )
 
 router = APIRouter(
@@ -38,7 +41,7 @@ router = APIRouter(
 
 
 @router.get(
-    "/v1/groups",
+    "/v1/groups/detail",
     response_model=PaginatedDataResponse[GetGroupResponse],
 )
 async def _get_groups(
@@ -51,6 +54,30 @@ async def _get_groups(
             name=query_params.name,
             page=query_params.page,
             page_size=query_params.page_size,
+        )
+
+    except HTTPException as exc:
+        logger.error("get_groups error")
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.error("get_groups error")
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.get(
+    "/v1/groups/simple",
+    response_model=ListDataResponse[GetSimpleGroupResponse],
+)
+async def _get_simple_groups(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    try:
+        return await get_simple_groups(
+            session=session,
         )
 
     except HTTPException as exc:
