@@ -60,7 +60,7 @@ async def get_groups(
 async def create_admin_group(
     session: AsyncSession,
     group_data: CreateGroupRequest,
-) -> User:
+):
     try:
         insert_query = insert(Group).values(
             {"name": group_data.name, "role": Role.ADMIN.value}
@@ -73,10 +73,26 @@ async def create_admin_group(
         raise e
 
 
+async def create_uncategorized_group(
+    session: AsyncSession,
+    group_data: CreateGroupRequest,
+):
+    try:
+        insert_query = insert(Group).values(
+            {"name": group_data.name, "role": Role.USER.value, "is_uncategorized": True}
+        )
+        await session.execute(insert_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
 async def create_group(
     session: AsyncSession,
     group_data: CreateGroupRequest,
-) -> User:
+):
     try:
         insert_query = insert(Group).values(
             {"name": group_data.name, "role": Role.USER.value}

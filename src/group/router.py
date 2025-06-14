@@ -18,6 +18,7 @@ from src.group.service import (
     get_groups,
     update_groups,
     delete_groups,
+    create_uncategorized_group,
 )
 from src.database import get_db_session
 from src.logger import logger
@@ -69,13 +70,6 @@ async def _create_admin_group(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
-        db_group = await get_group_by_name(session=session, name=group_data.name)
-
-        if db_group:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Group already exists"
-            )
-
         await create_admin_group(session=session, group_data=group_data)
 
         return DetailResponse(detail="Create group successfully")
@@ -157,6 +151,29 @@ async def _delete_groups(
         await delete_groups(session=session, group_ids=group_ids)
 
         return DetailResponse(detail="Groups moved to 未分類 successfully")
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.post(
+    "/v1/groups/uncategorized",
+    response_model=DetailResponse,
+)
+async def _create_uncategorized_group(
+    group_data: Annotated[CreateGroupRequest, Body()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    try:
+        await create_uncategorized_group(session=session, group_data=group_data)
+
+        return DetailResponse(detail="Create group successfully")
 
     except HTTPException as exc:
         logger.exception(exc)
