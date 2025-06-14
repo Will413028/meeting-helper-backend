@@ -1,8 +1,8 @@
-"""db init
+"""add user group
 
-Revision ID: cd995c3d6ecb
+Revision ID: c134abd3c20f
 Revises:
-Create Date: 2025-06-12 03:15:29.519534
+Create Date: 2025-06-14 20:58:42.228727
 
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "cd995c3d6ecb"
+revision: str = "c134abd3c20f"
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,7 +26,7 @@ def upgrade() -> None:
         "groups",
         sa.Column("group_id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("name", sa.String(length=50), nullable=False),
-        sa.Column("role", sa.Integer(), server_default="user", nullable=False),
+        sa.Column("role", sa.String(length=10), server_default="user", nullable=False),
         sa.PrimaryKeyConstraint("group_id"),
     )
     op.create_table(
@@ -41,16 +41,10 @@ def upgrade() -> None:
         sa.Column("error_message", sa.String(length=20), nullable=True),
         sa.Column("result", sa.JSON(), nullable=True),
         sa.Column(
-            "created_at",
-            sa.DateTime(),
-            server_default=sa.text("(CURRENT_TIMESTAMP)"),
-            nullable=False,
+            "created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False
         ),
         sa.Column(
-            "updated_at",
-            sa.DateTime(),
-            server_default=sa.text("(CURRENT_TIMESTAMP)"),
-            nullable=False,
+            "updated_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False
         ),
         sa.Column("started_at", sa.DateTime(), nullable=True),
         sa.Column("completed_at", sa.DateTime(), nullable=True),

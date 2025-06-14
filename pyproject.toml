@@ -17,6 +17,6 @@ dependencies = [
     "structlog>=25.4.0",
     "rich>=14.0.0",
     "better-exceptions>=0.3.3",
-    "aiosqlite>=0.21.0",
     "orjson>=3.10.18",
+    "asyncpg>=0.30.0",
 ]
