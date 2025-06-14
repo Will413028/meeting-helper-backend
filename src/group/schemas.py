@@ -69,3 +69,19 @@ class GetGroupsParams(BaseModel):
     page: Annotated[int, Query(ge=1)] = 1
     page_size: Annotated[int, Query(ge=1, le=100)] = 10
     name: Annotated[str | None, Query()] = None
+
+
+class GetSimpleGroupResponse(BaseModel):
+    group_id: int
+    name: str
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "group_id": 1,
+                    "name": "RD",
+                }
+            ]
+        }
+    }
