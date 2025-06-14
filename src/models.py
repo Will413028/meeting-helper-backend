@@ -1,4 +1,4 @@
-from sqlalchemy import String, JSON, ForeignKey
+from sqlalchemy import String, JSON, ForeignKey, TEXT
 from sqlalchemy.orm import (
     Mapped,
     mapped_column,
@@ -53,4 +53,6 @@ class Transcription(Base):
     tags: Mapped[dict] = mapped_column(JSON, nullable=True)
     speaks: Mapped[dict] = mapped_column(JSON, nullable=True)
     audio_duration: Mapped[float] = mapped_column(nullable=True)
+    summary: Mapped[str] = mapped_column(TEXT, nullable=True)
+    transcription_text: Mapped[str] = mapped_column(TEXT, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
