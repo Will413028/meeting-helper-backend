@@ -30,11 +30,18 @@ async def get_groups(
     page: int = 1,
     page_size: int = 10,
 ) -> PaginatedDataResponse[GetGroupResponse]:
-    query = select(
-        Group.group_id,
-        Group.name,
-        Group.role,
-    ).order_by(asc(Group.group_id))
+    query = (
+        select(
+            Group.group_id,
+            Group.name,
+            Group.role,
+            func.count(User.user_id).label("user_count"),
+        )
+        .select_from(Group)
+        .outerjoin(User, Group.group_id == User.group_id)
+        .group_by(Group.group_id, Group.name, Group.role)
+        .order_by(asc(Group.group_id))
+    )
 
     if name:
         query = query.filter(Group.name.like(f"%{name}%"))

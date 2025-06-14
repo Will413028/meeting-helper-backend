@@ -4,8 +4,6 @@ from fastapi import Query
 from pydantic import BaseModel
 
 
-
-
 T = TypeVar("T")
 
 
@@ -51,6 +49,7 @@ class GetGroupResponse(BaseModel):
     group_id: int
     name: str
     role: str
+    user_count: int
 
     model_config = {
         "json_schema_extra": {
@@ -59,6 +58,7 @@ class GetGroupResponse(BaseModel):
                     "group_id": 1,
                     "name": "RD",
                     "role": "user",
+                    "user_count": 5,
                 }
             ]
         }
