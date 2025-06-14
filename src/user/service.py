@@ -1,0 +1,53 @@
+from sqlalchemy import select, delete, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.schemas import PaginatedDataResponse
+from src.user.schemas import GetUserResponse
+from src.models import User, Group
+
+
+async def get_users(
+    session: AsyncSession,
+    name: str | None,
+    page: int = 1,
+    page_size: int = 10,
+) -> PaginatedDataResponse[GetUserResponse]:
+    query = select(
+        User.user_id,
+        User.name,
+        User.account,
+        Group.name.label("group_name"),
+    ).join(Group, User.group_id == Group.group_id)
+
+    if name:
+        query = query.filter(User.name.like(f"%{name}%"))
+
+    total_count = (
+        await session.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar()
+
+    total_pages = (total_count + page_size - 1) // page_size
+
+    offset = (page - 1) * page_size
+
+    results = (
+        (await session.execute(query.offset(offset).limit(page_size))).mappings().all()
+    )
+
+    return PaginatedDataResponse[GetUserResponse](
+        total_count=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        data=results,
+    )
+
+
+async def delete_user(session: AsyncSession, user_ids: list[int]):
+    try:
+        delete_query = delete(User).where(User.user_id.in_(user_ids))
+        await session.execute(delete_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
