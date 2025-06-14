@@ -1,8 +1,19 @@
-from sqlalchemy import insert, select, update, delete
+from sqlalchemy import (
+    asc,
+    delete,
+    desc,
+    func,
+    insert,
+    select,
+    update,
+)
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.group.schemas import CreateGroupRequest, UpdateGroupsRequest
+from src.schemas import PaginatedDataResponse
+from src.group.schemas import CreateGroupRequest, UpdateGroupsRequest, GetGroupResponse
 from src.models import User, Group
+from src.constants import Role
 
 
 async def get_group_by_name(session: AsyncSession, name: str) -> Group:
@@ -14,11 +25,52 @@ async def get_group_by_name(session: AsyncSession, name: str) -> Group:
     return group
 
 
-async def get_groups(session: AsyncSession) -> list[Group]:
-    query = select(Group)
-    result = await session.execute(query)
-    groups = result.scalars().all()
-    return groups
+async def get_groups(
+    session: AsyncSession,
+    order_by: str,
+    page: int = 1,
+    page_size: int = 10,
+) -> PaginatedDataResponse[GetGroupResponse]:
+    order_expression = desc if order_by == "desc" else asc
+
+    query = select(
+        Group.group_id,
+        Group.name,
+        Group.role,
+    ).order_by(order_expression(Group.group_id))
+    total_count = (
+        await session.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar()
+    total_pages = (total_count + page_size - 1) // page_size
+
+    offset = (page - 1) * page_size
+
+    results = (
+        (await session.execute(query.offset(offset).limit(page_size))).mappings().all()
+    )
+
+    return PaginatedDataResponse[GetGroupResponse](
+        total_count=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        data=results,
+    )
+
+
+async def create_admin_group(
+    session: AsyncSession,
+    group_data: CreateGroupRequest,
+) -> User:
+    try:
+        insert_query = insert(Group).values(
+            {"name": group_data.name, "role": Role.ADMIN.value}
+        )
+        await session.execute(insert_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
 
 
 async def create_group(
@@ -27,9 +79,7 @@ async def create_group(
 ) -> User:
     try:
         insert_query = insert(Group).values(
-            {
-                "name": group_data.name,
-            }
+            {"name": group_data.name, "role": Role.USER.value}
         )
         await session.execute(insert_query)
         await session.commit()

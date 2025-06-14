@@ -4,6 +4,7 @@ from fastapi import (
     APIRouter,
     Body,
     Depends,
+    Query,
     HTTPException,
     status,
 )
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.group.schemas import CreateGroupRequest, GetGroupResponse, UpdateGroupsRequest
 from src.group.service import (
     create_group,
+    create_admin_group,
     get_group_by_name,
     get_groups,
     update_groups,
@@ -19,7 +21,11 @@ from src.group.service import (
 )
 from src.database import get_db_session
 from src.logger import logger
-from src.schemas import DetailResponse, PaginatedDataResponse
+from src.schemas import (
+    BasicPageQueryParams,
+    DetailResponse,
+    PaginatedDataResponse,
+)
 
 router = APIRouter(
     tags=["group"],
@@ -31,19 +37,15 @@ router = APIRouter(
     response_model=PaginatedDataResponse[GetGroupResponse],
 )
 async def _get_groups(
+    query_params: Annotated[BasicPageQueryParams, Query()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
-        groups = await get_groups(session=session)
-
-        # Convert to response format
-        groups_data = [
-            GetGroupResponse(group_id=group.group_id, name=group.name, role=group.role)
-            for group in groups
-        ]
-
-        return PaginatedDataResponse(
-            data=groups_data, total=len(groups_data), page=1, per_page=len(groups_data)
+        return await get_groups(
+            session=session,
+            order_by=query_params.order_by,
+            page=query_params.page,
+            page_size=query_params.page_size,
         )
 
     except HTTPException as exc:
@@ -52,6 +54,36 @@ async def _get_groups(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except Exception as exc:
         logger.error("get_groups error")
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.post(
+    "/v1/groups/admin",
+    response_model=DetailResponse,
+)
+async def _create_admin_group(
+    group_data: Annotated[CreateGroupRequest, Body()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    try:
+        db_group = await get_group_by_name(session=session, name=group_data.name)
+
+        if db_group:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Group already exists"
+            )
+
+        await create_admin_group(session=session, group_data=group_data)
+
+        return DetailResponse(detail="Create group successfully")
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
         logger.exception(exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
