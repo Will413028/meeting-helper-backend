@@ -45,13 +45,17 @@ class UpdateGroupsRequest(BaseModel):
 
 
 class GetGroupResponse(BaseModel):
+    group_id: int
     name: str
+    role: str
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
+                    "group_id": 1,
                     "name": "RD",
+                    "role": "user",
                 }
             ]
         }
