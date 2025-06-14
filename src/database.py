@@ -2,32 +2,20 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from sqlalchemy.orm import (
-    declarative_base,
-)
-
-
-import os
 
 from src.config import settings
 
-Base = declarative_base()
-
-DATABASE_URL = (
-    f"sqlite+aiosqlite:///{os.path.join(settings.OUTPUT_DIR, 'meeting_helper.db')}"
-)
-
 engine = create_async_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
+    settings.DATABASE_URL,
+    pool_size=50,
+    max_overflow=100,
     pool_pre_ping=True,
     echo=True,
 )
 
+
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    autoflush=False,
-    future=True,
+    bind=engine, class_=AsyncSession, autoflush=False, expire_on_commit=False
 )
 
 
