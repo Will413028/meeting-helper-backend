@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.schemas import (
     CreateUserRequest,
     UpdatePasswordRequest,
+    GetUserByAccountResponse,
 )
 from src.auth.utils import get_password_hash, verify_password
 from src.config import settings
-from src.models import User
+from src.models import User, Group
 
 
 async def create_access_token(
@@ -28,11 +29,24 @@ async def create_access_token(
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-async def get_user_by_account(session: AsyncSession, account: str) -> User:
-    query = select(User).where(User.account == account)
+async def get_user_by_account(
+    session: AsyncSession, account: str
+) -> GetUserByAccountResponse:
+    query = (
+        select(
+            User.user_id,
+            User.name,
+            User.account,
+            User.password,
+            User.group_id,
+            Group.name.label("group_name"),
+        )
+        .join(Group, User.group_id == Group.group_id)
+        .where(User.account == account)
+    )
 
     result = await session.execute(query)
-    user = result.scalar()
+    user = result.mappings().first()
 
     return user
 
@@ -73,7 +87,9 @@ async def create_user(
         raise e
 
 
-async def authenticate_user(session: AsyncSession, account: str, password: str) -> User:
+async def authenticate_user(
+    session: AsyncSession, account: str, password: str
+) -> GetUserByAccountResponse:
     db_user = await get_user_by_account(session=session, account=account)
 
     if not db_user:

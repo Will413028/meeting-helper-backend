@@ -109,7 +109,9 @@ async def _login(
             data={"sub": user.account}, expires_delta=access_token_expires
         )
 
-        return Token(access_token=access_token)
+        return Token(
+            access_token=access_token, group_name=user.group_name, user_name=user.name
+        )
 
     except HTTPException as exc:
         logger.exception(exc)
