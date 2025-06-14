@@ -28,6 +28,8 @@ class CreateUserRequest(BaseModel):
 
 class Token(BaseModel):
     access_token: str
+    group_name: str
+    user_name: str
 
 
 class UpdatePasswordRequest(BaseModel):
@@ -42,3 +44,12 @@ class UpdatePasswordRequest(BaseModel):
             ]
         }
     }
+
+
+class GetUserByAccountResponse(BaseModel):
+    user_id: int
+    name: str
+    account: str
+    password: str
+    group_id: int
+    group_name: str
