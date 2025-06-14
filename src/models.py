@@ -4,7 +4,7 @@ from sqlalchemy.orm import (
     mapped_column,
     DeclarativeBase,
 )
-from sqlalchemy.sql import func
+from sqlalchemy.sql import false, func
 from datetime import datetime
 from src.constants import Role
 
@@ -29,6 +29,9 @@ class Group(Base):
     group_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     role: Mapped[str] = mapped_column(String(10), server_default=str(Role.USER.value))
+    is_uncategorized: Mapped[bool] = mapped_column(  # cspell:ignore uncategorized
+        server_default=false()
+    )
 
 
 class Transcription(Base):
@@ -41,7 +44,7 @@ class Transcription(Base):
     srt_path: Mapped[str] = mapped_column(String(255))
     language: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20), default="pending")
-    error_message: Mapped[str] = mapped_column(String(20), nullable=True)
+    error_message: Mapped[str] = mapped_column(String(100), nullable=True)
     result: Mapped[dict] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
