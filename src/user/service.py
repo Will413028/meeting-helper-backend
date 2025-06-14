@@ -2,7 +2,7 @@ from sqlalchemy import select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.schemas import PaginatedDataResponse
-from src.user.schemas import GetUserResponse, UpdateUserRequest
+from src.user.schemas import GetUserResponse, UpdateUserRequest, UpdateUsersGroupRequest
 from src.models import User, Group
 
 
@@ -70,6 +70,28 @@ async def update_user(
             )
         )
         await session.execute(update_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
+async def update_users_group(
+    session: AsyncSession, users_data: UpdateUsersGroupRequest
+):
+    try:
+        for user_data in users_data.users_data:
+            update_query = (
+                update(User)
+                .where(User.user_id == user_data.user_id)
+                .values(
+                    {
+                        "group_id": user_data.group_id,
+                    }
+                )
+            )
+            await session.execute(update_query)
         await session.commit()
 
     except Exception as e:

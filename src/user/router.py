@@ -16,8 +16,9 @@ from src.user.schemas import (
     GetUserResponse,
     GetUsersParams,
     UpdateUserRequest,
+    UpdateUsersGroupRequest,
 )
-from src.user.service import get_users, delete_user, update_user
+from src.user.service import get_users, delete_user, update_user, update_users_group
 from src.database import get_db_session
 from src.logger import logger
 from src.schemas import DetailResponse, PaginatedDataResponse
@@ -39,6 +40,26 @@ async def _get_users(
             page=query_params.page,
             page_size=query_params.page_size,
         )
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.put("/users/groups")
+async def _update_users_groups(
+    users_data: Annotated[UpdateUsersGroupRequest, Body()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DetailResponse:
+    try:
+        await update_users_group(session=session, users_data=users_data)
+
+        return DetailResponse(detail="Updated successfully")
 
     except HTTPException as exc:
         logger.exception(exc)

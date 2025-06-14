@@ -57,3 +57,27 @@ class DeleteUserRequest(BaseModel):
     user_ids: list[int]
 
     model_config = {"json_schema_extra": {"examples": [{"user_ids": [1, 2, 3]}]}}
+
+
+class UpdateUserGroup(BaseModel):
+    user_id: int
+    group_id: int
+
+
+class UpdateUsersGroupRequest(BaseModel):
+    users_data: list[UpdateUserGroup]
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "users_data": [
+                        {
+                            "user_id": 1,
+                            "group_id": 2,
+                        }
+                    ]
+                }
+            ]
+        }
+    }
