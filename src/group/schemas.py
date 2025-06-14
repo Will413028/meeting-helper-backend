@@ -1,6 +1,9 @@
-from typing import TypeVar
+from typing import Annotated, TypeVar
 
+from fastapi import Query
 from pydantic import BaseModel
+
+
 
 
 T = TypeVar("T")
@@ -60,3 +63,9 @@ class GetGroupResponse(BaseModel):
             ]
         }
     }
+
+
+class GetGroupsParams(BaseModel):
+    page: Annotated[int, Query(ge=1)] = 1
+    page_size: Annotated[int, Query(ge=1, le=100)] = 10
+    name: Annotated[str | None, Query()] = None

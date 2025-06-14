@@ -1,7 +1,6 @@
 from sqlalchemy import (
     asc,
     delete,
-    desc,
     func,
     insert,
     select,
@@ -27,20 +26,23 @@ async def get_group_by_name(session: AsyncSession, name: str) -> Group:
 
 async def get_groups(
     session: AsyncSession,
-    order_by: str,
+    name: str | None,
     page: int = 1,
     page_size: int = 10,
 ) -> PaginatedDataResponse[GetGroupResponse]:
-    order_expression = desc if order_by == "desc" else asc
-
     query = select(
         Group.group_id,
         Group.name,
         Group.role,
-    ).order_by(order_expression(Group.group_id))
+    ).order_by(asc(Group.group_id))
+
+    if name:
+        query = query.filter(Group.name.like(f"%{name}%"))
+
     total_count = (
         await session.execute(select(func.count()).select_from(query.subquery()))
     ).scalar()
+
     total_pages = (total_count + page_size - 1) // page_size
 
     offset = (page - 1) * page_size

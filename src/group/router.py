@@ -10,7 +10,12 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.group.schemas import CreateGroupRequest, GetGroupResponse, UpdateGroupsRequest
+from src.group.schemas import (
+    CreateGroupRequest,
+    GetGroupResponse,
+    UpdateGroupsRequest,
+    GetGroupsParams,
+)
 from src.group.service import (
     create_group,
     create_admin_group,
@@ -23,7 +28,6 @@ from src.group.service import (
 from src.database import get_db_session
 from src.logger import logger
 from src.schemas import (
-    BasicPageQueryParams,
     DetailResponse,
     PaginatedDataResponse,
 )
@@ -38,13 +42,13 @@ router = APIRouter(
     response_model=PaginatedDataResponse[GetGroupResponse],
 )
 async def _get_groups(
-    query_params: Annotated[BasicPageQueryParams, Query()],
+    query_params: Annotated[GetGroupsParams, Query()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
         return await get_groups(
             session=session,
-            order_by=query_params.order_by,
+            name=query_params.name,
             page=query_params.page,
             page_size=query_params.page_size,
         )
