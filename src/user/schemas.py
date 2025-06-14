@@ -33,6 +33,26 @@ class GetUserResponse(BaseModel):
     }
 
 
+class UpdateUserRequest(BaseModel):
+    group_id: int
+    name: str
+    account: str
+    password: str
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "group_id": 1,
+                    "name": "RD1",
+                    "account": "rd1",
+                    "password": "password123",
+                }
+            ]
+        }
+    }
+
+
 class DeleteUserRequest(BaseModel):
     user_ids: list[int]
 

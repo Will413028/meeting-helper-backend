@@ -1,8 +1,8 @@
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.schemas import PaginatedDataResponse
-from src.user.schemas import GetUserResponse
+from src.user.schemas import GetUserResponse, UpdateUserRequest
 from src.models import User, Group
 
 
@@ -46,6 +46,30 @@ async def delete_user(session: AsyncSession, user_ids: list[int]):
     try:
         delete_query = delete(User).where(User.user_id.in_(user_ids))
         await session.execute(delete_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
+async def update_user(
+    session: AsyncSession, user_id: int, user_data: UpdateUserRequest
+):
+    try:
+        update_query = (
+            update(User)
+            .where(User.user_id == user_id)
+            .values(
+                {
+                    "name": user_data.name,
+                    "account": user_data.account,
+                    "password": user_data.password,
+                    "group_id": user_data.group_id,
+                }
+            )
+        )
+        await session.execute(update_query)
         await session.commit()
 
     except Exception as e:
