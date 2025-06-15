@@ -13,6 +13,7 @@ from src.setting.router import router as setting_router
 from src.config import settings
 from src.constants import DEFAULT_ERROR_RESPONSE
 from src.logger import logger
+from src.database import engine
 
 
 @asynccontextmanager
@@ -23,6 +24,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.exception(f"Application startup failed, error: {e}")
     yield
+    # Cleanup on shutdown
+    logger.info("Shutting down application")
+    await engine.dispose()
 
 
 app = FastAPI(
