@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Optional
 
-from sqlalchemy import insert, select, delete
+from sqlalchemy import insert, select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.schemas import DataResponse
+from src.schemas import DataResponse, PaginatedDataResponse
 from src.models import Transcription
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     CreateTranscriptionParams,
+    GetTranscriptionResponse,
 )
 
 
@@ -74,7 +75,7 @@ async def update_transcription(session: AsyncSession, task_id: str, **kwargs) ->
 
 async def get_transcription_by_transcription_id(
     session: AsyncSession, transcription_id: int
-) -> GetTranscriptionByTranscriptionIdResponse:
+) -> DataResponse[GetTranscriptionByTranscriptionIdResponse]:
     query = select(
         Transcription.transcription_id,
         Transcription.transcription_title,
@@ -87,29 +88,46 @@ async def get_transcription_by_transcription_id(
     ).where(Transcription.transcription_id == transcription_id)
 
     result = await session.execute(query)
-    transcription = result.scalar_one_or_none()
+    result = result.first()
 
-    return DataResponse[GetTranscriptionByTranscriptionIdResponse](data=transcription)
+    return DataResponse[GetTranscriptionByTranscriptionIdResponse](data=result)
 
 
-async def list_transcriptions(
+async def get_transcriptions(
     session: AsyncSession,
-    limit: int = 100,
-    offset: int = 0,
-    status: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    """List transcriptions with pagination"""
-    query = select(Transcription)
+    name: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
+) -> PaginatedDataResponse[GetTranscriptionResponse]:
+    query = select(
+        Transcription.transcription_id,
+        Transcription.transcription_title,
+        Transcription.tags,
+        Transcription.audio_duration,
+        Transcription.created_at,
+    )
 
-    if status:
-        query = query.filter_by(status=status)
+    if name:
+        query = query.filter(Transcription.transcription_title.like(f"%{name}%"))
 
-    query = query.order_by(Transcription.created_at.desc()).limit(limit).offset(offset)
+    total_count = (
+        await session.execute(select(func.count()).select_from(query.subquery()))
+    ).scalar()
 
-    result = await session.execute(query)
-    transcriptions = result.scalars().all()
+    total_pages = (total_count + page_size - 1) // page_size
 
-    return transcriptions
+    offset = (page - 1) * page_size
+
+    results = (
+        (await session.execute(query.offset(offset).limit(page_size))).mappings().all()
+    )
+
+    return PaginatedDataResponse[GetTranscriptionResponse](
+        total_count=total_count,
+        total_pages=total_pages,
+        current_page=page,
+        data=results,
+    )
 
 
 async def delete_transcription_by_id(

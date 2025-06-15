@@ -257,7 +257,7 @@ uv run ./src/whisperx_diarize.py
 
 ### API test with curl
 ```bash
-curl -X POST "http://localhost:8000/transcribe/" \
+curl -X POST "http://localhost:8701/api/v1/transcribe" \
   -F "file=@audio.mp4" \
   -F "model=large-v3" \
   -F "language=zh" \
