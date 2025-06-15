@@ -106,7 +106,7 @@ Example:
 [SPEAKER_01] 好的，我準備好了
 ```
 
-### 2. POST /transcribe/async (Asynchronous with Progress Tracking)
+### 2. POST /transcribe (Asynchronous with Progress Tracking)
 
 Upload an audio file and start asynchronous transcription with progress tracking and estimated completion time.
 
@@ -147,7 +147,6 @@ Get the status and progress of a transcription task.
   "started_at": "2024-01-08T12:00:05",
   "completed_at": null,
   "estimated_completion_time": "2024-01-08T12:05:00",
-  "error_message": null,
   "result": null  // Contains file paths when completed
 }
 ```
@@ -219,7 +218,7 @@ if response.status_code == 200:
 
 ```bash
 # 1. Start transcription
-RESPONSE=$(curl -X POST "http://localhost:8000/transcribe/async" \
+RESPONSE=$(curl -X POST "http://localhost:8000/transcribe" \
   -F "file=@audio.mp4" \
   -F "model=large-v3" \
   -F "language=zh")

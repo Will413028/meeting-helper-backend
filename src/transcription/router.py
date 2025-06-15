@@ -1,11 +1,12 @@
 import os
 import shutil
 from pathlib import Path
-from datetime import datetime
-
+from datetime import datetime, timedelta
+from typing import Annotated
 from fastapi import (
     APIRouter,
     Depends,
+    Query,
     File,
     HTTPException,
     UploadFile,
@@ -23,18 +24,24 @@ from src.config import settings
 from src.transcription.service import (
     create_transcription,
     get_transcription_by_transcription_id,
-    list_transcriptions,
     delete_transcription_by_id,
     cleanup_old_transcriptions,
+    get_transcriptions,
 )
-from src.transcription.schemas import CreateTranscriptionParams
+from src.transcription.schemas import (
+    CreateTranscriptionParams,
+    GetTranscriptionsParams,
+    GetTranscriptionByTranscriptionIdResponse,
+    GetTranscriptionResponse,
+)
 from src.transcription.background_processor import process_audio_async
+from src.schemas import PaginatedDataResponse, DataResponse
 
 router = APIRouter(tags=["transcription"])
 
 
-@router.post("/v1/transcribe/async")
-async def transcribe_audio_async(
+@router.post("/v1/transcribe")
+async def _transcribe_audio_async(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = "zh",
@@ -50,7 +57,7 @@ async def transcribe_audio_async(
     file_extension = Path(file.filename).suffix.lower()
     if file_extension not in allowed_extensions:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File type not supported. Allowed types: {', '.join(allowed_extensions)}",
         )
 
@@ -108,7 +115,9 @@ async def get_task_status(task_id: str):
     """Get the status and progress of a transcription task"""
     task = task_manager.get_task(task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
 
     return task.to_dict()
 
@@ -120,26 +129,36 @@ async def list_tasks():
     return {"count": len(tasks), "tasks": tasks}
 
 
-# @router.get("/v1/transcriptions")
-# async def _list_transcriptions(
-#     limit: int = 100,
-#     offset: int = 0,
-#     status: Optional[str] = None,
-#     session: AsyncSession = Depends(get_db_session),
-# ):
-#     transcriptions = await list_transcriptions(
-#         session, limit=limit, offset=offset, status=status
-#     )
+@router.get(
+    "/v1/transcriptions", response_model=PaginatedDataResponse[GetTranscriptionResponse]
+)
+async def _get_transcriptions(
+    query_params: Annotated[GetTranscriptionsParams, Query()],
+    session: AsyncSession = Depends(get_db_session),
+):
+    try:
+        return await get_transcriptions(
+            session=session,
+            name=query_params.name,
+            page=query_params.page,
+            page_size=query_params.page_size,
+        )
+    except HTTPException as exc:
+        logger.error("get_transcriptions error")
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.error("get_transcriptions error")
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
-#     return {
-#         "total": total,
-#         "limit": limit,
-#         "offset": offset,
-#         "transcriptions": transcriptions,
-#     }
 
-
-@router.get("/v1/transcription/{transcription_id}")
+@router.get(
+    "/v1/transcription/{transcription_id}",
+    response_model=DataResponse[GetTranscriptionByTranscriptionIdResponse],
+)
 async def _get_transcription_endpoint(
     transcription_id: int, session: AsyncSession = Depends(get_db_session)
 ):
@@ -169,7 +188,9 @@ async def delete_transcription_endpoint(
         session=session, transcription_id=transcription_id
     )
     if not transcription_response or not transcription_response.data:
-        raise HTTPException(status_code=404, detail="Transcription not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
+        )
 
     # We need to get the full transcription record to access file paths
     # The get_transcription_by_transcription_id only returns selected fields
@@ -227,23 +248,22 @@ async def cleanup_old_transcriptions_endpoint(
     # Get old transcriptions before deletion if we need to delete files
     files_deleted = []
     if delete_files:
-        old_transcriptions = await list_transcriptions(
-            session, limit=1000
-        )  # Get a large batch
-        cutoff_date = datetime.now().timestamp() - (days * 24 * 60 * 60)
+        # Query database directly to get full transcription records with file paths
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        result = await session.execute(
+            select(Transcription).where(Transcription.created_at < cutoff_date)
+        )
+        old_transcriptions = result.scalars().all()
 
         for trans in old_transcriptions:
-            # Check if transcription is old enough
-            created_at = datetime.fromisoformat(trans["created_at"]).timestamp()
-            if created_at < cutoff_date:
-                # Delete associated files
-                for file_path in [trans.get("audio_path"), trans.get("srt_path")]:
-                    if file_path and os.path.exists(file_path):
-                        try:
-                            os.remove(file_path)
-                            files_deleted.append(file_path)
-                        except Exception as e:
-                            print(f"Error deleting file {file_path}: {e}")
+            # Delete associated files
+            for file_path in [trans.audio_path, trans.srt_path]:
+                if file_path and os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        files_deleted.append(file_path)
+                    except Exception as e:
+                        logger.error(f"Error deleting file {file_path}: {e}")
 
     # Clean up database records
     deleted_count = await cleanup_old_transcriptions(session, days=days)

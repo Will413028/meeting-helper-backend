@@ -8,12 +8,6 @@ from pydantic import BaseModel
 T = TypeVar("T")
 
 
-class GetUsersParams(BaseModel):
-    page: Annotated[int, Query(ge=1)] = 1
-    page_size: Annotated[int, Query(ge=1, le=100)] = 10
-    name: Annotated[str | None, Query()] = None
-
-
 class GetUserResponse(BaseModel):
     group_name: str
     user_id: int
@@ -34,30 +28,18 @@ class GetUserResponse(BaseModel):
     }
 
 
-class UpdateUserRequest(BaseModel):
-    group_id: int
-    name: str
-    account: str
-    password: str
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "group_id": 1,
-                    "name": "RD1",
-                    "account": "rd1",
-                    "password": "password123",
-                }
-            ]
-        }
-    }
+class GetTranscriptionsParams(BaseModel):
+    page: Annotated[int, Query(ge=1)] = 1
+    page_size: Annotated[int, Query(ge=1, le=100)] = 10
+    name: Annotated[str | None, Query()] = None
 
 
-class DeleteUserRequest(BaseModel):
-    user_ids: list[int]
-
-    model_config = {"json_schema_extra": {"examples": [{"user_ids": [1, 2, 3]}]}}
+class GetTranscriptionResponse(BaseModel):
+    transcription_id: int
+    transcription_title: str | None
+    tags: dict | None
+    audio_duration: float | None
+    created_at: datetime
 
 
 class CreateTranscriptionParams(BaseModel):
