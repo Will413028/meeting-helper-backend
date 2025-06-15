@@ -1,10 +1,12 @@
 import os
+import re
 import shutil
 import zipfile
 import tempfile
+import mimetypes
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi import (
     APIRouter,
     Depends,
@@ -14,6 +16,8 @@ from fastapi import (
     UploadFile,
     status,
     BackgroundTasks,
+    Header,
+    Response,
 )
 from fastapi.responses import FileResponse
 from sqlalchemy import select
@@ -396,4 +400,193 @@ async def download_transcription_files(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create download archive",
+        )
+
+
+@router.get("/v1/transcription/{transcription_id}/audio")
+async def stream_audio(
+    transcription_id: int,
+    range: Optional[str] = Header(None),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Stream audio file with support for range requests.
+    This endpoint is used by audio players and waveform visualizers.
+
+    Supports:
+    - Range requests for seeking
+    - Proper content-type detection
+    - Caching headers
+    """
+    # Get the transcription record
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
+        )
+
+    # Check if audio file exists
+    audio_path = transcription.audio_path
+    if not audio_path or not os.path.exists(audio_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found"
+        )
+
+    # Get file size
+    file_size = os.path.getsize(audio_path)
+
+    # Determine content type
+    content_type, _ = mimetypes.guess_type(audio_path)
+    if not content_type:
+        # Set default content type based on file extension
+        ext = os.path.splitext(audio_path)[1].lower()
+        content_types = {
+            ".mp3": "audio/mpeg",
+            ".wav": "audio/wav",
+            ".mp4": "audio/mp4",
+            ".m4a": "audio/mp4",
+            ".ogg": "audio/ogg",
+            ".webm": "audio/webm",
+            ".flac": "audio/flac",
+        }
+        content_type = content_types.get(ext, "audio/mpeg")
+
+    # If no range request, return the entire file
+    if not range:
+        return FileResponse(
+            audio_path,
+            media_type=content_type,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Parse range request
+    range_match = re.search(r"bytes=(\d+)-(\d*)", range)
+    if not range_match:
+        return FileResponse(audio_path, media_type=content_type)
+
+    start = int(range_match.group(1))
+    end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
+
+    # Ensure valid range
+    start = max(0, min(start, file_size - 1))
+    end = max(start, min(end, file_size - 1))
+    content_length = end - start + 1
+
+    # Read the requested range
+    with open(audio_path, "rb") as audio_file:
+        audio_file.seek(start)
+        data = audio_file.read(content_length)
+
+    # Return partial content
+    return Response(
+        content=data,
+        status_code=206,  # Partial Content
+        headers={
+            "Content-Type": content_type,
+            "Content-Length": str(content_length),
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+@router.get("/v1/transcription/{transcription_id}/audio/info")
+async def get_audio_info(
+    transcription_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Get audio file metadata.
+    Useful for frontend to display information before loading the audio.
+    """
+    # Get the transcription record
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
+        )
+
+    audio_path = transcription.audio_path
+    if not audio_path or not os.path.exists(audio_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found"
+        )
+
+    file_size = os.path.getsize(audio_path)
+    file_extension = os.path.splitext(audio_path)[1][1:]  # Remove the dot
+
+    return {
+        "transcription_id": transcription_id,
+        "filename": transcription.filename,
+        "title": transcription.transcription_title,
+        "size_bytes": file_size,
+        "size_mb": round(file_size / (1024 * 1024), 2),
+        "duration": transcription.audio_duration,
+        "format": file_extension,
+        "language": transcription.language,
+        "created_at": transcription.created_at.isoformat()
+        if transcription.created_at
+        else None,
+        "has_srt": bool(
+            transcription.srt_path and os.path.exists(transcription.srt_path)
+        ),
+    }
+
+
+@router.get("/v1/transcription/{transcription_id}/srt")
+async def get_srt_content(
+    transcription_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Get SRT subtitle content as plain text.
+    Used by frontend to display synchronized subtitles with audio playback.
+    """
+    # Get the transcription record
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
+        )
+
+    srt_path = transcription.srt_path
+    if not srt_path or not os.path.exists(srt_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="SRT file not found"
+        )
+
+    # Read SRT content
+    try:
+        with open(srt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        return Response(
+            content=content,
+            media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    except Exception as e:
+        logger.error(
+            f"Error reading SRT file for transcription {transcription_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to read SRT file",
         )

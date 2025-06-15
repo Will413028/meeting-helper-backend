@@ -151,7 +151,50 @@ Get the status and progress of a transcription task.
 }
 ```
 
-### 4. GET /tasks
+### 4. POST /task/{task_id}/cancel
+
+Cancel a running transcription task.
+
+#### Request
+
+- **Method**: POST
+- **Path Parameter**: task_id (string) - The ID of the task to cancel
+
+#### Response
+
+- **Success (200)**: Task cancelled successfully
+  ```json
+  {
+    "task_id": "uuid-string",
+    "message": "Task cancelled successfully",
+    "status": "cancelled"
+  }
+  ```
+
+- **Error (404)**: Task not found
+  ```json
+  {
+    "detail": "Task not found"
+  }
+  ```
+
+- **Error (400)**: Task cannot be cancelled
+  ```json
+  {
+    "detail": "Task cannot be cancelled. Current status: completed"
+  }
+  ```
+
+#### Notes
+
+- Only tasks with status "pending" or "processing" can be cancelled
+- Cancelling a task will:
+  - Stop the transcription process
+  - Update the task status to "cancelled"
+  - Clean up the uploaded audio file
+  - Update the database record
+
+### 5. GET /tasks
 
 List all transcription tasks.
 
@@ -172,7 +215,7 @@ List all transcription tasks.
 }
 ```
 
-### 5. GET /disk-space
+### 6. GET /disk-space
 
 Get remaining disk space information in GB.
 
@@ -237,6 +280,9 @@ while true; do
   fi
   sleep 2
 done
+
+# 4. Cancel a running task
+curl -X POST "http://localhost:8000/task/$TASK_ID/cancel" | jq
 ```
 
 ### Using the async test script
@@ -298,7 +344,7 @@ The backend now uses SQLite to persistently store transcription information. All
 - Error messages (if any)
 - File metadata
 
-### 6. GET /transcriptions
+### 7. GET /transcriptions
 
 List all transcriptions from the database with pagination.
 
@@ -341,7 +387,7 @@ List all transcriptions from the database with pagination.
 }
 ```
 
-### 7. GET /transcription/{task_id}
+### 8. GET /transcription/{task_id}
 
 Get a specific transcription record by task_id.
 
@@ -374,7 +420,7 @@ Get a specific transcription record by task_id.
 }
 ```
 
-### 8. GET /transcription/by-filename/{filename}
+### 9. GET /transcription/by-filename/{filename}
 
 Get the most recent transcription for a specific filename.
 
@@ -382,7 +428,7 @@ Get the most recent transcription for a specific filename.
 
 Same format as GET /transcription/{task_id}
 
-### 9. DELETE /transcription/{task_id}
+### 10. DELETE /transcription/{task_id}
 
 Delete a transcription record.
 
@@ -405,7 +451,56 @@ Delete a transcription record.
 }
 ```
 
-### 10. POST /transcriptions/cleanup
+### 11. GET /v1/transcription/{transcription_id}/download
+
+Download transcription audio and SRT files as a ZIP archive.
+
+#### Request
+
+- **Method**: GET
+- **Path Parameter**: transcription_id (integer) - The ID of the transcription to download
+
+#### Response
+
+- **Success (200)**: Returns a ZIP file containing:
+  - The original audio file (with cleaned filename)
+  - The SRT subtitle file
+  - Content-Type: application/zip
+  - Content-Disposition: attachment; filename="transcription_{id}_{title}.zip"
+
+- **Error (404)**: Transcription or files not found
+  ```json
+  {
+    "detail": "Transcription not found" // or "Audio file not found" or "SRT file not found"
+  }
+  ```
+
+- **Error (500)**: Failed to create archive
+  ```json
+  {
+    "detail": "Failed to create download archive"
+  }
+  ```
+
+#### Example Usage
+
+```bash
+# Download transcription files as ZIP
+curl -O -J "http://localhost:8000/v1/transcription/123/download"
+
+# Using wget
+wget --content-disposition "http://localhost:8000/v1/transcription/123/download"
+
+# Using Python
+import requests
+
+response = requests.get('http://localhost:8000/v1/transcription/123/download')
+if response.status_code == 200:
+    with open('transcription.zip', 'wb') as f:
+        f.write(response.content)
+```
+
+### 12. POST /transcriptions/cleanup
 
 Clean up transcriptions older than specified days.
 
@@ -431,7 +526,7 @@ Clean up transcriptions older than specified days.
 }
 ```
 
-### 11. GET /transcriptions/stats
+### 13. GET /transcriptions/stats
 
 Get statistics about transcriptions.
 
@@ -512,3 +607,123 @@ curl "http://localhost:8000/disk-space" | jq
 The SQLite database file is stored at: `/app/output/meeting_helper.db`
 
 This location ensures the database persists alongside the transcription files and can be easily backed up or accessed.
+
+## Audio Streaming API
+
+### 14. GET /v1/transcription/{transcription_id}/audio
+
+Stream audio file with support for range requests. This endpoint is essential for audio players and waveform visualizers.
+
+#### Request
+
+- **Method**: GET
+- **Path Parameter**: transcription_id (integer) - The ID of the transcription
+- **Headers**:
+  - Range (optional): Byte range for partial content requests (e.g., "bytes=0-1023")
+
+#### Response
+
+- **Success (200)**: Full audio file
+  - Content-Type: Detected audio MIME type (audio/mpeg, audio/wav, etc.)
+  - Headers:
+    - Accept-Ranges: bytes
+    - Content-Length: File size in bytes
+    - Cache-Control: public, max-age=3600
+
+- **Success (206)**: Partial content (when Range header is provided)
+  - Content-Type: Detected audio MIME type
+  - Headers:
+    - Content-Range: bytes {start}-{end}/{total}
+    - Accept-Ranges: bytes
+    - Content-Length: Partial content length
+    - Cache-Control: public, max-age=3600
+
+- **Error (404)**: Transcription or audio file not found
+
+#### Example Usage
+
+```bash
+# Stream entire audio file
+curl "http://localhost:8000/v1/transcription/123/audio" -o audio.mp3
+
+# Stream with range request (for seeking)
+curl -H "Range: bytes=0-1048575" "http://localhost:8000/v1/transcription/123/audio"
+
+# JavaScript example for audio element
+const audio = new Audio(`http://localhost:8000/v1/transcription/123/audio`);
+audio.play();
+```
+
+### 15. GET /v1/transcription/{transcription_id}/audio/info
+
+Get audio file metadata without downloading the file.
+
+#### Response
+
+```json
+{
+  "transcription_id": 123,
+  "filename": "meeting.mp4",
+  "title": "Team Meeting 2024-01-08",
+  "size_bytes": 10485760,
+  "size_mb": 10.0,
+  "duration": 300.5,
+  "format": "mp4",
+  "language": "zh",
+  "created_at": "2024-01-08T12:00:00",
+  "has_srt": true
+}
+```
+
+### 16. GET /v1/transcription/{transcription_id}/srt
+
+Get SRT subtitle content as plain text for synchronized playback.
+
+#### Response
+
+- **Success (200)**: SRT content as plain text
+  - Content-Type: text/plain; charset=utf-8
+  - Cache-Control: public, max-age=3600
+
+- **Error (404)**: Transcription or SRT file not found
+
+#### Example Usage
+
+```bash
+# Get SRT content
+curl "http://localhost:8000/v1/transcription/123/srt"
+
+# JavaScript example
+fetch(`http://localhost:8000/v1/transcription/123/srt`)
+  .then(res => res.text())
+  .then(srtContent => {
+    // Parse and display subtitles
+    console.log(srtContent);
+  });
+```
+
+## Frontend Integration Example
+
+Here's how to use these endpoints with WaveSurfer.js:
+
+```javascript
+// Initialize WaveSurfer with the audio streaming endpoint
+const wavesurfer = WaveSurfer.create({
+  container: '#waveform',
+  waveColor: '#4F4A85',
+  progressColor: '#383351',
+  backend: 'WebAudio'
+});
+
+// Load audio from the streaming endpoint
+const audioUrl = `http://localhost:8000/v1/transcription/${transcriptionId}/audio`;
+wavesurfer.load(audioUrl);
+
+// Load and parse SRT subtitles
+fetch(`http://localhost:8000/v1/transcription/${transcriptionId}/srt`)
+  .then(res => res.text())
+  .then(srtContent => {
+    const subtitles = parseSRT(srtContent);
+    // Sync subtitles with audio playback
+  });
+```
