@@ -16,6 +16,81 @@ from src.logger import logger
 # Global dictionary to track running processes
 running_processes: Dict[str, subprocess.Popen] = {}
 
+# Global queue processor task
+_queue_processor_task: Optional[asyncio.Task] = None
+
+
+async def start_queue_processor():
+    """Start the global queue processor if not already running"""
+    global _queue_processor_task
+    if _queue_processor_task is None or _queue_processor_task.done():
+        _queue_processor_task = asyncio.create_task(_process_queue())
+        logger.info("Started queue processor task")
+
+
+async def _process_queue():
+    """Continuously process tasks from the queue"""
+    while True:
+        try:
+            # Check if we can process a task
+            if await task_manager.is_processing_available():
+                # Get next task from queue
+                task_id = await task_manager.get_next_task()
+                if task_id:
+                    logger.info(f"Processing next task from queue: {task_id}")
+                    # Get task details from database
+                    async with AsyncSessionLocal() as session:
+                        from sqlalchemy import select
+                        from src.models import Transcription
+
+                        result = await session.execute(
+                            select(Transcription).filter_by(task_id=task_id)
+                        )
+                        transcription = result.scalar_one_or_none()
+
+                        if transcription:
+                            # Process the task
+                            await process_audio_async(
+                                task_id=task_id,
+                                audio_path=transcription.audio_path,
+                                output_dir=os.path.dirname(transcription.srt_path),
+                                language=transcription.language,
+                                hug_token=os.getenv("HUG_TOKEN", ""),
+                            )
+                        else:
+                            logger.error(f"Task {task_id} not found in database")
+                            await task_manager.fail_task(
+                                task_id, "Task not found in database"
+                            )
+
+            # Wait a bit before checking again
+            await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"Error in queue processor: {e}")
+            await asyncio.sleep(5)  # Wait longer on error
+
+
+async def queue_audio_processing(
+    task_id: str,
+    audio_path: str,
+    output_dir: str,
+    language: str,
+    hug_token: str,
+):
+    """Add audio processing task to queue"""
+    # Add to queue
+    await task_manager.add_to_queue(task_id)
+
+    # Update database status
+    async with AsyncSessionLocal() as session:
+        await update_transcription(session, task_id=task_id, status="queued")
+
+    # Ensure queue processor is running
+    await start_queue_processor()
+
+    logger.info(f"Task {task_id} added to queue")
+
 
 async def process_audio_async(
     task_id: str,
@@ -68,7 +143,7 @@ async def process_audio_async(
         task = task_manager.get_task(task_id)
         if task and task.status == TaskStatus.CANCELLED:
             logger.info(f"Task {task_id} was cancelled before processing started")
-            await _cleanup_cancelled_task(task_id, audio_path, session)
+            await _cleanup_cancelled_task(task_id, audio_path)
             return
 
         # Run WhisperX with cancellation support
@@ -89,7 +164,7 @@ async def process_audio_async(
         task = task_manager.get_task(task_id)
         if task and task.status == TaskStatus.CANCELLED:
             logger.info(f"Task {task_id} was cancelled during processing")
-            await _cleanup_cancelled_task(task_id, audio_path, session)
+            await _cleanup_cancelled_task(task_id, audio_path)
             return
 
         # Check if SRT file was generated
@@ -105,7 +180,7 @@ async def process_audio_async(
             "srt_file": srt_filename,
             "srt_path": srt_file_path,
         }
-        task_manager.complete_task(task_id, result)
+        await task_manager.complete_task(task_id, result)
 
         # Update database with completion
         async with AsyncSessionLocal() as session:
@@ -125,7 +200,7 @@ async def process_audio_async(
         logger.error(f"Error processing audio for task {task_id}: {e}")
 
         # Update task manager
-        task_manager.fail_task(task_id, str(e))
+        await task_manager.fail_task(task_id, str(e))
 
         # Update database
         try:
@@ -210,16 +285,17 @@ async def _run_whisperx_with_cancellation(
             raise
 
 
-async def _cleanup_cancelled_task(task_id: str, audio_path: str, session):
+async def _cleanup_cancelled_task(task_id: str, audio_path: str):
     """Clean up resources for a cancelled task"""
     # Update database
-    await update_transcription(
-        session,
-        task_id=task_id,
-        status="cancelled",
-        completed_at=datetime.now(),
-        current_step="Cancelled by user",
-    )
+    async with AsyncSessionLocal() as session:
+        await update_transcription(
+            session,
+            task_id=task_id,
+            status="cancelled",
+            completed_at=datetime.now(),
+            current_step="Cancelled by user",
+        )
 
     # Clean up audio file
     if os.path.exists(audio_path):
@@ -233,7 +309,7 @@ async def _cleanup_cancelled_task(task_id: str, audio_path: str, session):
 async def cancel_transcription_task(task_id: str) -> bool:
     """Cancel a running transcription task"""
     # First, update the task status
-    cancelled = task_manager.cancel_task(task_id)
+    cancelled = await task_manager.cancel_task(task_id)
 
     if cancelled:
         # Try to terminate the WhisperX process if it's running
