@@ -30,6 +30,7 @@ class Token(BaseModel):
     access_token: str
     group_name: str
     user_name: str
+    role: str
 
 
 class UpdatePasswordRequest(BaseModel):
@@ -53,3 +54,4 @@ class GetUserByAccountResponse(BaseModel):
     password: str
     group_id: int
     group_name: str
+    role: str
