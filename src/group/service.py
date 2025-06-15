@@ -1,6 +1,5 @@
 from sqlalchemy import (
     asc,
-    delete,
     func,
     insert,
     select,
@@ -148,7 +147,7 @@ async def delete_groups(session: AsyncSession, group_ids: list[str]):
                     "name": "未分類",
                 }
             )
-            result = await session.execute(insert_query)
+            await session.execute(insert_query)
             await session.flush()  # Flush to get the group_id
 
             # Get the newly created group
@@ -161,11 +160,6 @@ async def delete_groups(session: AsyncSession, group_ids: list[str]):
             .values(group_id=uncategorized_group.group_id)
         )
         await session.execute(update_query)
-
-        # Now delete the groups
-        delete_query = delete(Group).where(Group.group_id.in_(group_ids))
-        await session.execute(delete_query)
-
         await session.commit()
 
     except Exception as e:

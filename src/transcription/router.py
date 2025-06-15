@@ -37,7 +37,6 @@ router = APIRouter(tags=["transcription"])
 async def transcribe_audio_async(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    model: str = "large-v3",
     language: str = "zh",
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -93,7 +92,6 @@ async def transcribe_audio_async(
         task_id,
         audio_path,
         output_dir,
-        model,
         language,
         settings.HUG_TOKEN,
     )
