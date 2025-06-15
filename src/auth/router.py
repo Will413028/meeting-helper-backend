@@ -110,7 +110,10 @@ async def _login(
         )
 
         return Token(
-            access_token=access_token, group_name=user.group_name, user_name=user.name
+            access_token=access_token,
+            group_name=user.group_name,
+            user_name=user.name,
+            role=user.role,
         )
 
     except HTTPException as exc:

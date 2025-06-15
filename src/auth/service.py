@@ -40,6 +40,7 @@ async def get_user_by_account(
             User.password,
             User.group_id,
             Group.name.label("group_name"),
+            Group.role,
         )
         .join(Group, User.group_id == Group.group_id)
         .where(User.account == account)
