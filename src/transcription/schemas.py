@@ -37,8 +37,8 @@ class GetTranscriptionsParams(BaseModel):
 class GetTranscriptionResponse(BaseModel):
     transcription_id: int
     transcription_title: str | None
-    tags: dict | None
-    audio_duration: float | None
+    tags: dict = ["tag1", "tag2"]
+    audio_duration: float = 1323.2
     created_at: datetime
 
 

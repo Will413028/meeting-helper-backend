@@ -42,7 +42,6 @@ from src.transcription.schemas import (
     GetTranscriptionResponse,
 )
 from src.transcription.background_processor import (
-    process_audio_async,
     cancel_transcription_task,
 )
 from src.schemas import PaginatedDataResponse, DataResponse
@@ -103,9 +102,11 @@ async def _transcribe_audio(
         ),
     )
 
-    # Start background processing with async task
+    # Add to processing queue instead of starting immediately
+    from src.transcription.background_processor import queue_audio_processing
+
     background_tasks.add_task(
-        process_audio_async,
+        queue_audio_processing,
         task_id,
         audio_path,
         output_dir,
@@ -137,6 +138,43 @@ async def list_tasks():
     """List all transcription tasks"""
     tasks = [task.to_dict() for task in task_manager.tasks.values()]
     return {"count": len(tasks), "tasks": tasks}
+
+
+@router.get("/v1/queue/status")
+async def get_queue_status():
+    """Get the current queue status"""
+    queue_status = task_manager.get_queue_status()
+
+    # Get details of current processing task
+    current_task = None
+    if queue_status["current_processing"]:
+        task = task_manager.get_task(queue_status["current_processing"])
+        if task:
+            current_task = {
+                "task_id": task.task_id,
+                "filename": task.filename,
+                "progress": task.progress,
+                "current_step": task.current_step,
+            }
+
+    # Get details of queued tasks
+    queued_tasks = []
+    for task_id in queue_status["queued_tasks"]:
+        task = task_manager.get_task(task_id)
+        if task:
+            queued_tasks.append(
+                {
+                    "task_id": task.task_id,
+                    "filename": task.filename,
+                    "queue_position": task.queue_position,
+                }
+            )
+
+    return {
+        "current_processing": current_task,
+        "queue_length": queue_status["queue_length"],
+        "queued_tasks": queued_tasks,
+    }
 
 
 @router.post("/v1/task/{task_id}/cancel")

@@ -102,8 +102,8 @@ async def get_transcriptions(
     query = select(
         Transcription.transcription_id,
         Transcription.transcription_title,
-        Transcription.tags,
-        Transcription.audio_duration,
+        # Transcription.tags,
+        # Transcription.audio_duration,
         Transcription.created_at,
     )
 
