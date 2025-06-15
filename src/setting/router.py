@@ -1,5 +1,6 @@
 from typing import Annotated
 
+import shutil
 from fastapi import (
     APIRouter,
     Depends,
@@ -67,3 +68,30 @@ async def _update_settings(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"update settings error: {str(exc)}",
         ) from exc
+
+
+@router.get("/v1/disk-space")
+async def get_disk_space():
+    """Get remaining disk space in GB"""
+    try:
+        # Get disk usage statistics for the root filesystem
+        disk_usage = shutil.disk_usage("/")
+
+        # Convert bytes to GB (1 GB = 1024^3 bytes)
+        total_gb = disk_usage.total / (1024**3)
+        used_gb = disk_usage.used / (1024**3)
+        free_gb = disk_usage.free / (1024**3)
+
+        # Calculate percentage used
+        percent_used = (disk_usage.used / disk_usage.total) * 100
+
+        return {
+            "total_gb": round(total_gb, 2),
+            "used_gb": round(used_gb, 2),
+            "free_gb": round(free_gb, 2),
+            "percent_used": round(percent_used, 2),
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error getting disk space: {str(e)}"
+        )
