@@ -1,5 +1,7 @@
 import os
 import shutil
+import zipfile
+import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Annotated
@@ -13,6 +15,7 @@ from fastapi import (
     status,
     BackgroundTasks,
 )
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -314,3 +317,83 @@ async def cleanup_old_transcriptions_endpoint(
         response["file_paths"] = files_deleted
 
     return response
+
+
+@router.get("/v1/transcription/{transcription_id}/download")
+async def download_transcription_files(
+    transcription_id: int,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Download transcription audio and SRT files as a zip archive
+
+    Returns a zip file containing:
+    - The original audio file
+    - The SRT subtitle file
+    """
+    # Get the transcription record
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
+        )
+
+    # Check if files exist
+    if not transcription.audio_path or not os.path.exists(transcription.audio_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found"
+        )
+
+    if not transcription.srt_path or not os.path.exists(transcription.srt_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="SRT file not found"
+        )
+
+    # Create a temporary zip file
+    temp_dir = tempfile.mkdtemp()
+    zip_filename = f"transcription_{transcription_id}_{transcription.transcription_title or 'download'}.zip"
+    zip_path = os.path.join(temp_dir, zip_filename)
+
+    try:
+        # Create zip file
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            # Add audio file with original filename
+            audio_filename = Path(transcription.audio_path).name
+            # Remove task_id prefix if present
+            if (
+                "_" in audio_filename
+                and audio_filename.split("_")[0] == transcription.task_id
+            ):
+                audio_filename = "_".join(audio_filename.split("_")[1:])
+            zipf.write(transcription.audio_path, arcname=audio_filename)
+
+            # Add SRT file
+            srt_filename = f"{transcription.transcription_title or 'subtitles'}.srt"
+            zipf.write(transcription.srt_path, arcname=srt_filename)
+
+        # Return the zip file
+        return FileResponse(
+            path=zip_path,
+            media_type="application/zip",
+            filename=zip_filename,
+            headers={"Content-Disposition": f"attachment; filename={zip_filename}"},
+        )
+
+    except Exception as e:
+        # Clean up on error
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+
+        logger.error(
+            f"Error creating zip file for transcription {transcription_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create download archive",
+        )
