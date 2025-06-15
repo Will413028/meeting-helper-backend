@@ -1,96 +1,95 @@
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-import os
 
-from sqlalchemy import insert, select, func, delete, or_
+from sqlalchemy import insert, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from src.schemas import DataResponse
 from src.models import Transcription
+from src.transcription.schemas import (
+    GetTranscriptionByTranscriptionIdResponse,
+    CreateTranscriptionParams,
+)
 
 
-async def save_transcription(
-    session: AsyncSession,
-    task_id: str,
-    filename: str,
-    audio_path: str,
-    srt_path: str,
-    language: str,
-    status: str = "pending",
-    extra_metadata: dict | None = None,
+async def create_transcription(
+    session: AsyncSession, transcription_data: CreateTranscriptionParams
 ):
-    insert_query = insert(Transcription).values(
-        task_id=task_id,
-        filename=filename,
-        audio_path=audio_path,
-        srt_path=srt_path,
-        language=language,
-        status=status,
-        extra_metadata=extra_metadata,
-    )
+    try:
+        insert_query = insert(Transcription).values(
+            task_id=transcription_data.task_id,
+            transcription_title=transcription_data.transcription_title,
+            filename=transcription_data.filename,
+            audio_path=transcription_data.audio_path,
+            srt_path=transcription_data.srt_path,
+            language=transcription_data.language,
+            status=transcription_data.status,
+            extra_metadata=transcription_data.extra_metadata,
+        )
 
-    await session.execute(insert_query)
-    await session.commit()
+        await session.execute(insert_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
 
 
 async def update_transcription(session: AsyncSession, task_id: str, **kwargs) -> bool:
     """Update transcription record by task_id"""
     # Get the transcription
-    result = await session.execute(select(Transcription).filter_by(task_id=task_id))
+    try:
+        result = await session.execute(select(Transcription).filter_by(task_id=task_id))
+        transcription = result.scalar_one_or_none()
+
+        if not transcription:
+            return False
+
+        # Update allowed fields
+        allowed_fields = {
+            "transcription_title",
+            "audio_path",
+            "srt_path",
+            "language",
+            "status",
+            "progress",
+            "current_step",
+            "result",
+            "started_at",
+            "completed_at",
+            "estimated_completion_time",
+            "extra_metadata",
+        }
+
+        for key, value in kwargs.items():
+            if key in allowed_fields and hasattr(transcription, key):
+                setattr(transcription, key, value)
+
+        await session.commit()
+        return True
+
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
+async def get_transcription_by_transcription_id(
+    session: AsyncSession, transcription_id: int
+) -> GetTranscriptionByTranscriptionIdResponse:
+    query = select(
+        Transcription.transcription_id,
+        Transcription.transcription_title,
+        Transcription.tags,
+        Transcription.speaks,
+        Transcription.summary,
+        Transcription.transcription_text,
+        Transcription.audio_duration,
+        Transcription.created_at,
+    ).where(Transcription.transcription_id == transcription_id)
+
+    result = await session.execute(query)
     transcription = result.scalar_one_or_none()
 
-    if not transcription:
-        return False
-
-    # Update allowed fields
-    allowed_fields = {
-        "audio_path",
-        "srt_path",
-        "language",
-        "status",
-        "progress",
-        "current_step",
-        "error_message",
-        "result",
-        "started_at",
-        "completed_at",
-        "estimated_completion_time",
-        "extra_metadata",
-    }
-
-    for key, value in kwargs.items():
-        if key in allowed_fields and hasattr(transcription, key):
-            setattr(transcription, key, value)
-
-    await session.commit()
-    return True
-
-
-async def get_transcription(
-    session: AsyncSession, task_id: str
-) -> Optional[Dict[str, Any]]:
-    """Get transcription by task_id"""
-    result = await session.execute(select(Transcription).filter_by(task_id=task_id))
-    transcription = result.scalar_one_or_none()
-
-    if transcription:
-        return _model_to_dict(transcription)
-    return None
-
-
-async def get_transcription_by_filename(
-    session: AsyncSession, filename: str
-) -> Optional[Dict[str, Any]]:
-    """Get the most recent transcription for a filename"""
-    result = await session.execute(
-        select(Transcription)
-        .filter_by(filename=filename)
-        .order_by(Transcription.created_at.desc())
-    )
-    transcription = result.scalar_one_or_none()
-
-    if transcription:
-        return _model_to_dict(transcription)
-    return None
+    return DataResponse[GetTranscriptionByTranscriptionIdResponse](data=transcription)
 
 
 async def list_transcriptions(
@@ -110,25 +109,16 @@ async def list_transcriptions(
     result = await session.execute(query)
     transcriptions = result.scalars().all()
 
-    return [_model_to_dict(t) for t in transcriptions]
+    return transcriptions
 
 
-async def count_transcriptions(
-    session: AsyncSession, status: Optional[str] = None
-) -> int:
-    """Count total transcriptions"""
-    query = select(func.count(Transcription.transcription_id))
-
-    if status:
-        query = query.filter(Transcription.status == status)
-
-    result = await session.execute(query)
-    return result.scalar() or 0
-
-
-async def delete_transcription(session: AsyncSession, task_id: str) -> bool:
-    """Delete transcription by task_id"""
-    result = await session.execute(select(Transcription).filter_by(task_id=task_id))
+async def delete_transcription_by_id(
+    session: AsyncSession, transcription_id: int
+) -> bool:
+    """Delete transcription by transcription_id"""
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
     transcription = result.scalar_one_or_none()
 
     if transcription:
@@ -148,61 +138,3 @@ async def cleanup_old_transcriptions(session: AsyncSession, days: int = 30) -> i
 
     await session.commit()
     return result.rowcount
-
-
-async def get_disk_usage_stats(session: AsyncSession) -> Dict[str, Any]:
-    """Get statistics about disk usage by transcriptions"""
-    result = await session.execute(
-        select(Transcription.audio_path, Transcription.srt_path).filter(
-            or_(
-                Transcription.audio_path.isnot(None), Transcription.srt_path.isnot(None)
-            )
-        )
-    )
-    transcriptions = result.all()
-
-    total_size = 0
-    file_count = 0
-
-    for trans in transcriptions:
-        for path in [trans.audio_path, trans.srt_path]:
-            if path and os.path.exists(path):
-                total_size += os.path.getsize(path)
-                file_count += 1
-
-    return {
-        "total_files": file_count,
-        "total_size_bytes": total_size,
-        "total_size_mb": round(total_size / (1024 * 1024), 2),
-        "total_size_gb": round(total_size / (1024 * 1024 * 1024), 2),
-    }
-
-
-def _model_to_dict(transcription: Transcription) -> Dict[str, Any]:
-    """Convert SQLAlchemy model to dictionary"""
-    return {
-        "id": transcription.transcription_id,
-        "task_id": transcription.task_id,
-        "filename": transcription.filename,
-        "audio_path": transcription.audio_path,
-        "srt_path": transcription.srt_path,
-        "language": transcription.language,
-        "status": transcription.status,
-        "progress": getattr(transcription, "progress", None),
-        "current_step": getattr(transcription, "current_step", None),
-        "error_message": transcription.error_message,
-        "result": transcription.result,
-        "created_at": transcription.created_at.isoformat()
-        if transcription.created_at
-        else None,
-        "started_at": transcription.started_at.isoformat()
-        if transcription.started_at
-        else None,
-        "completed_at": transcription.completed_at.isoformat()
-        if transcription.completed_at
-        else None,
-        "estimated_completion_time": transcription.estimated_completion_time.isoformat()
-        if transcription.estimated_completion_time
-        else None,
-        "metadata": transcription.extra_metadata,
-    }

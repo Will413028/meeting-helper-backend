@@ -1,0 +1,99 @@
+from datetime import datetime
+from typing import Annotated, TypeVar
+
+from fastapi import Query
+from pydantic import BaseModel
+
+
+T = TypeVar("T")
+
+
+class GetUsersParams(BaseModel):
+    page: Annotated[int, Query(ge=1)] = 1
+    page_size: Annotated[int, Query(ge=1, le=100)] = 10
+    name: Annotated[str | None, Query()] = None
+
+
+class GetUserResponse(BaseModel):
+    group_name: str
+    user_id: int
+    account: str
+    name: str
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "group_name": "開發部",
+                    "user_id": 1,
+                    "account": "rd1",
+                    "name": "RD1",
+                }
+            ]
+        }
+    }
+
+
+class UpdateUserRequest(BaseModel):
+    group_id: int
+    name: str
+    account: str
+    password: str
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "group_id": 1,
+                    "name": "RD1",
+                    "account": "rd1",
+                    "password": "password123",
+                }
+            ]
+        }
+    }
+
+
+class DeleteUserRequest(BaseModel):
+    user_ids: list[int]
+
+    model_config = {"json_schema_extra": {"examples": [{"user_ids": [1, 2, 3]}]}}
+
+
+class CreateTranscriptionParams(BaseModel):
+    task_id: str
+    transcription_title: str
+    filename: str
+    audio_path: str
+    srt_path: str
+    language: str
+    status: str
+    extra_metadata: dict | None = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "task_id": "task_id",
+                    "transcription_title": "My Transcription",
+                    "filename": "filename",
+                    "audio_path": "audio_path",
+                    "srt_path": "srt_path",
+                    "language": "language",
+                    "status": "status",
+                    "extra_metadata": {"key": "value"},
+                }
+            ]
+        }
+    }
+
+
+class GetTranscriptionByTranscriptionIdResponse(BaseModel):
+    transcription_id: int
+    transcription_title: str
+    tags: dict
+    speaks: dict
+    summary: str
+    transcription_text: str
+    audio_duration: float
+    created_at: datetime
