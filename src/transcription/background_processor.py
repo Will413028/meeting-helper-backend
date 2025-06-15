@@ -16,7 +16,6 @@ async def process_audio_async(
     task_id: str,
     audio_path: str,
     output_dir: str,
-    model: str,
     language: str,
     hug_token: str,
 ):
@@ -64,7 +63,7 @@ async def process_audio_async(
         whisperx_diarize_with_progress(
             audio_path=audio_path,
             output_dir=output_dir,
-            model=model,
+            model="large-v3",
             align_model="WAV2VEC2_ASR_LARGE_LV60K_960H",
             language=language,
             chunk_size=6,
