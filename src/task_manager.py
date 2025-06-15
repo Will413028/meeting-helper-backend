@@ -9,6 +9,7 @@ class TaskStatus(Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class TranscriptionTask:
@@ -93,6 +94,15 @@ class TaskManager:
             task.completed_at = datetime.now()
             task.error_message = error_message
             task.current_step = "Failed"
+
+    def cancel_task(self, task_id: str) -> bool:
+        task = self.get_task(task_id)
+        if task and task.status in [TaskStatus.PENDING, TaskStatus.PROCESSING]:
+            task.status = TaskStatus.CANCELLED
+            task.completed_at = datetime.now()
+            task.current_step = "Cancelled"
+            return True
+        return False
 
 
 # Global task manager instance
