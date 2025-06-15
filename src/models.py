@@ -62,5 +62,9 @@ class Setting(Base):
     __tablename__ = "settings"
 
     setting_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    is_auto_delete: Mapped[bool] = mapped_column(server_default=false()) # 自動刪除30天前的檔案
-    is_auto_clean: Mapped[bool] = mapped_column(server_default=false()) # 自動清理空間，如果如果空間使用率超過80%就刪除30天前的檔案
+    is_auto_delete: Mapped[bool] = mapped_column(
+        server_default=false()
+    )  # 自動刪除30天前的檔案
+    is_auto_clean: Mapped[bool] = mapped_column(
+        server_default=false()
+    )  # 自動清理空間，如果如果空間使用率超過80%就刪除30天前的檔案
