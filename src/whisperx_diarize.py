@@ -1,7 +1,11 @@
 import subprocess
 import re
+import signal
 from datetime import datetime, timedelta
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict
+
+# Global dictionary to track running processes by task_id
+_running_processes: Dict[str, subprocess.Popen] = {}
 
 
 def whisperx_diarize_with_progress(
@@ -14,6 +18,7 @@ def whisperx_diarize_with_progress(
     hug_token: str = "",
     initial_prompt: str = "",
     progress_callback: Optional[Callable[[int, str, Optional[datetime]], None]] = None,
+    task_id: Optional[str] = None,
 ):
     """
     Run WhisperX with progress tracking
@@ -67,6 +72,10 @@ def whisperx_diarize_with_progress(
         bufsize=1,
     )
 
+    # Track the process if task_id is provided
+    if task_id:
+        _running_processes[task_id] = process
+
     start_time = datetime.now()
     total_duration = None
     current_progress = 0
@@ -95,16 +104,17 @@ def whisperx_diarize_with_progress(
 
     current_step = "loading_model"
 
-    # Read output line by line
-    for line in iter(process.stdout.readline, ""):
-        if not line:
-            break
+    try:
+        # Read output line by line
+        for line in iter(process.stdout.readline, ""):
+            if not line:
+                break
 
-        line = line.strip()
-        if not line:
-            continue
+            line = line.strip()
+            if not line:
+                continue
 
-        print(f"WhisperX: {line}")
+            print(f"WhisperX: {line}")
 
         # Extract duration if available
         duration_match = patterns["duration"].search(line)
@@ -169,20 +179,58 @@ def whisperx_diarize_with_progress(
                 remaining = estimated_total - elapsed
                 estimated_completion = datetime.now() + timedelta(seconds=remaining)
 
-        # Call progress callback
-        if progress_callback and current_step in steps_progress:
-            progress_callback(
-                current_progress, steps_progress[current_step][2], estimated_completion
-            )
+            # Call progress callback
+            if progress_callback and current_step in steps_progress:
+                try:
+                    progress_callback(
+                        current_progress,
+                        steps_progress[current_step][2],
+                        estimated_completion,
+                    )
+                except Exception as e:
+                    # If callback raises an exception (e.g., cancellation), terminate the process
+                    print(f"Progress callback raised exception: {e}")
+                    if task_id and task_id in _running_processes:
+                        terminate_process(task_id)
+                    raise
 
-    # Wait for process to complete
-    process.wait()
+        # Wait for process to complete
+        process.wait()
 
-    if process.returncode != 0:
-        raise Exception(f"WhisperX failed with return code {process.returncode}")
+        if process.returncode != 0:
+            # Check if it was terminated (usually returns -15 for SIGTERM)
+            if process.returncode == -signal.SIGTERM:
+                raise Exception("WhisperX process was terminated")
+            else:
+                raise Exception(
+                    f"WhisperX failed with return code {process.returncode}"
+                )
 
-    # Final progress update
-    if progress_callback:
-        progress_callback(100, "Completed", datetime.now())
+        # Final progress update
+        if progress_callback:
+            progress_callback(100, "Completed", datetime.now())
 
-    print("WhisperX processing completed")
+        print("WhisperX processing completed")
+
+    finally:
+        # Clean up process tracking
+        if task_id and task_id in _running_processes:
+            del _running_processes[task_id]
+
+
+def terminate_process(task_id: str) -> bool:
+    """Terminate a running WhisperX process"""
+    if task_id in _running_processes:
+        process = _running_processes[task_id]
+        if process.poll() is None:  # Process is still running
+            print(f"Terminating WhisperX process for task {task_id}")
+            process.terminate()
+            try:
+                process.wait(timeout=5)  # Wait up to 5 seconds for graceful termination
+            except subprocess.TimeoutExpired:
+                print(f"Force killing WhisperX process for task {task_id}")
+                process.kill()
+                process.wait()
+            del _running_processes[task_id]
+            return True
+    return False

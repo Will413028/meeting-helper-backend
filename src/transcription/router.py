@@ -34,14 +34,17 @@ from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     GetTranscriptionResponse,
 )
-from src.transcription.background_processor import process_audio_async
+from src.transcription.background_processor import (
+    process_audio_async,
+    cancel_transcription_task,
+)
 from src.schemas import PaginatedDataResponse, DataResponse
 
 router = APIRouter(tags=["transcription"])
 
 
 @router.post("/v1/transcribe")
-async def _transcribe_audio_async(
+async def _transcribe_audio(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = "zh",
@@ -127,6 +130,39 @@ async def list_tasks():
     """List all transcription tasks"""
     tasks = [task.to_dict() for task in task_manager.tasks.values()]
     return {"count": len(tasks), "tasks": tasks}
+
+
+@router.post("/v1/task/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """Cancel a running transcription task"""
+    # Check if task exists
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
+        )
+
+    # Check if task can be cancelled
+    if task.status.value not in ["pending", "processing"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Task cannot be cancelled. Current status: {task.status.value}",
+        )
+
+    # Cancel the task
+    success = await cancel_transcription_task(task_id)
+
+    if success:
+        return {
+            "task_id": task_id,
+            "message": "Task cancelled successfully",
+            "status": "cancelled",
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to cancel task",
+        )
 
 
 @router.get(
