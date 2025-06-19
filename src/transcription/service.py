@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import insert, select, delete, func
+from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.schemas import DataResponse, PaginatedDataResponse
 from src.models import Transcription
@@ -9,6 +9,7 @@ from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     CreateTranscriptionParams,
     GetTranscriptionResponse,
+    UpdateTranscriptionParams,
 )
 
 
@@ -24,6 +25,7 @@ async def create_transcription(
             srt_path=transcription_data.srt_path,
             language=transcription_data.language,
             status=transcription_data.status,
+            audio_duration=transcription_data.audio_duration,
             extra_metadata=transcription_data.extra_metadata,
         )
 
@@ -59,6 +61,7 @@ async def update_transcription(session: AsyncSession, task_id: str, **kwargs) ->
             "completed_at",
             "estimated_completion_time",
             "extra_metadata",
+            "audio_duration",
         }
 
         for key, value in kwargs.items():
@@ -87,8 +90,7 @@ async def get_transcription_by_transcription_id(
         Transcription.created_at,
     ).where(Transcription.transcription_id == transcription_id)
 
-    result = await session.execute(query)
-    result = result.first()
+    result = (await session.execute(query)).mappings().first()
 
     return DataResponse[GetTranscriptionByTranscriptionIdResponse](data=result)
 
@@ -102,8 +104,8 @@ async def get_transcriptions(
     query = select(
         Transcription.transcription_id,
         Transcription.transcription_title,
-        # Transcription.tags,
-        # Transcription.audio_duration,
+        Transcription.tags,
+        Transcription.audio_duration,
         Transcription.created_at,
     )
 
@@ -156,3 +158,27 @@ async def cleanup_old_transcriptions(session: AsyncSession, days: int = 30) -> i
 
     await session.commit()
     return result.rowcount
+
+
+async def update_transcription_api(
+    session: AsyncSession,
+    transcription_id: int,
+    transcription_data: UpdateTranscriptionParams,
+):
+    try:
+        update_query = (
+            update(Transcription)
+            .where(Transcription.transcription_id == transcription_id)
+            .values(
+                transcription_title=transcription_data.transcription_title,
+                tags=transcription_data.tags,
+                speaks=transcription_data.speaks,
+            )
+        )
+
+        await session.execute(update_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e

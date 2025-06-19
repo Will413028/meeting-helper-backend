@@ -19,7 +19,7 @@ def whisperx_diarize_with_progress(
     initial_prompt: str = "",
     progress_callback: Optional[Callable[[int, str, Optional[datetime]], None]] = None,
     task_id: Optional[str] = None,
-):
+) -> None:
     """
     Run WhisperX with progress tracking
 
@@ -33,6 +33,7 @@ def whisperx_diarize_with_progress(
         hug_token: HuggingFace token
         initial_prompt: Initial prompt for transcription
         progress_callback: Callback function(progress: int, step: str, estimated_completion: datetime)
+        task_id: Task ID for process tracking
     """
 
     command = f"whisperx '{audio_path}' --model {model}"
@@ -77,7 +78,6 @@ def whisperx_diarize_with_progress(
         _running_processes[task_id] = process
 
     start_time = datetime.now()
-    total_duration = None
     current_progress = 0
 
     # Progress tracking patterns
@@ -88,7 +88,6 @@ def whisperx_diarize_with_progress(
         "processing": re.compile(r"Processing segment"),
         "aligning": re.compile(r"Aligning"),
         "diarizing": re.compile(r"Diarizing"),
-        "duration": re.compile(r"Duration:\s*([\d:.]+)"),
         "progress": re.compile(r"Progress:\s*([\d.]+)%"),
         "segment": re.compile(r"segment\s+(\d+)/(\d+)"),
     }
@@ -116,35 +115,22 @@ def whisperx_diarize_with_progress(
 
             print(f"WhisperX: {line}")
 
-        # Extract duration if available
-        duration_match = patterns["duration"].search(line)
-        if duration_match and not total_duration:
-            duration_str = duration_match.group(1)
-            # Parse duration (HH:MM:SS.mmm or MM:SS.mmm)
-            parts = duration_str.split(":")
-            if len(parts) == 3:
-                hours, minutes, seconds = parts
-                total_duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-            elif len(parts) == 2:
-                minutes, seconds = parts
-                total_duration = int(minutes) * 60 + float(seconds)
+            # Update progress based on output
+            estimated_completion = None
 
-        # Update progress based on output
-        estimated_completion = None
-
-        # Check for specific steps
-        if patterns["model_loaded"].search(line):
-            current_step = "model_loaded"
-            current_progress = steps_progress[current_step][1]
-        elif patterns["transcribing"].search(line):
-            current_step = "transcribing"
-            current_progress = steps_progress[current_step][0]
-        elif patterns["aligning"].search(line):
-            current_step = "aligning"
-            current_progress = steps_progress[current_step][0]
-        elif patterns["diarizing"].search(line):
-            current_step = "diarizing"
-            current_progress = steps_progress[current_step][0]
+            # Check for specific steps
+            if patterns["model_loaded"].search(line):
+                current_step = "model_loaded"
+                current_progress = steps_progress[current_step][1]
+            elif patterns["transcribing"].search(line):
+                current_step = "transcribing"
+                current_progress = steps_progress[current_step][0]
+            elif patterns["aligning"].search(line):
+                current_step = "aligning"
+                current_progress = steps_progress[current_step][0]
+            elif patterns["diarizing"].search(line):
+                current_step = "diarizing"
+                current_progress = steps_progress[current_step][0]
 
         # Check for percentage progress
         progress_match = patterns["progress"].search(line)
