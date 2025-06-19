@@ -237,10 +237,8 @@ async def _run_whisperx_with_cancellation(
     hug_token: str,
     initial_prompt: str,
     progress_callback,
-):
+) -> None:
     """Run WhisperX in a way that can be cancelled"""
-    # We need to modify whisperx_diarize_with_progress to return the process
-    # For now, we'll create a wrapper that can check for cancellation
     loop = asyncio.get_event_loop()
 
     def run_with_cancellation_check():

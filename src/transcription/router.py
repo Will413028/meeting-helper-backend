@@ -35,18 +35,19 @@ from src.transcription.service import (
     delete_transcription_by_id,
     cleanup_old_transcriptions,
     get_transcriptions,
-    update_transcription_api
+    update_transcription_api,
 )
 from src.transcription.schemas import (
     CreateTranscriptionParams,
     GetTranscriptionsParams,
     GetTranscriptionByTranscriptionIdResponse,
     GetTranscriptionResponse,
-    UpdateTranscriptionParams
+    UpdateTranscriptionParams,
 )
 from src.transcription.background_processor import (
     cancel_transcription_task,
 )
+from src.transcription.audio_utils import get_audio_duration
 from src.schemas import PaginatedDataResponse, DataResponse, DetailResponse
 
 router = APIRouter(tags=["transcription"])
@@ -88,6 +89,14 @@ async def _transcribe_audio(
     # Generate a title from the filename (remove extension)
     transcription_title = Path(file.filename).stem
 
+    # Extract audio duration immediately after saving the file
+    audio_duration = get_audio_duration(audio_path)
+    if audio_duration is None:
+        logger.warning(
+            f"Could not extract audio duration for {audio_path}, setting to 0"
+        )
+        audio_duration = 0.0
+
     await create_transcription(
         session=session,
         transcription_data=CreateTranscriptionParams(
@@ -98,6 +107,7 @@ async def _transcribe_audio(
             srt_path=srt_path,
             language=language,
             status="pending",
+            audio_duration=audio_duration,  # Add the extracted duration
             extra_metadata={
                 "file_size": os.path.getsize(audio_path),
                 "original_filename": file.filename,
@@ -632,6 +642,7 @@ async def get_srt_content(
             detail="Failed to read SRT file",
         )
 
+
 @router.put(
     "/v1/transcription/{transcription_id}",
     response_model=DetailResponse,
@@ -642,7 +653,11 @@ async def _update_transcription(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
-        await update_transcription_api(session=session, transcription_id=transcription_id, transcription_data=transcription_data)
+        await update_transcription_api(
+            session=session,
+            transcription_id=transcription_id,
+            transcription_data=transcription_data,
+        )
 
         return DetailResponse(detail="User password reset successfully")
 
