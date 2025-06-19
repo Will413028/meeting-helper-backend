@@ -28,7 +28,7 @@ def get_connector():
 
 async def generate_summary(
     transcription_text: str,
-    model: str = "deepseek-r1:14b",
+    model: str = "llama3.2:latest",  # Changed to llama3.2 for consistency
     ollama_api_url: str = "http://localhost:11435/api/generate",
     max_tokens: int = 500,
 ) -> Optional[str]:
@@ -184,3 +184,156 @@ async def check_ollama_availability(
             f"Unexpected error checking Ollama availability: {type(e).__name__}: {e}"
         )
         return False
+
+
+async def generate_tags(
+    transcription_text: str,
+    model: str = "llama3.2:latest",  # Changed to llama3.2 which might follow instructions better
+    ollama_api_url: str = "http://localhost:11435/api/generate",
+    max_tags: int = 8,
+) -> Optional[list]:
+    """
+    Generate tags for the transcription using Ollama API
+
+    Args:
+        transcription_text: The full transcription text to generate tags from
+        model: The Ollama model to use
+        ollama_api_url: The Ollama API endpoint
+        max_tags: Maximum number of tags to generate (default: 8)
+
+    Returns:
+        A list of tags or None if failed
+    """
+
+    # Prepare the prompt for tag generation
+    prompt = f"""Generate tags for the following meeting transcript. Output ONLY the tags separated by commas, nothing else.
+
+Requirements:
+- Generate 1 to {max_tags} tags
+- Tags should be concise and relevant
+- Tags should reflect main topics and key concepts
+- Use Traditional Chinese
+- No punctuation or special characters
+- Output format: tag1, tag2, tag3
+
+Meeting transcript:
+{transcription_text}
+
+Tags:"""
+
+    # Prepare the request payload
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "num_predict": 100,  # Limit tokens for tags
+            "temperature": 0.3,  # Even lower temperature for more deterministic output
+        },
+    }
+
+    # Retry logic for transient network errors
+    max_retries = 3
+    retry_delay = 1
+
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession(connector=get_connector()) as session:
+                async with session.post(
+                    ollama_api_url,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=OLLAMA_GENERATE_TIMEOUT),
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        tags_text = result.get("response", "").strip()
+                        logger.debug(f"Raw Ollama response for tags: {tags_text}")
+
+                        if tags_text:
+                            # Clean up the response - remove any thinking process
+                            # Look for common patterns that indicate thinking
+                            if "<think>" in tags_text:
+                                # For deepseek model, extract content after </think>
+                                if "</think>" in tags_text:
+                                    tags_text = tags_text.split("</think>")[-1].strip()
+                                else:
+                                    tags_text = tags_text.split("<think>")[0].strip()
+
+                            # Remove any remaining XML-like tags
+                            import re
+
+                            tags_text = re.sub(r"<[^>]+>", "", tags_text).strip()
+
+                            # Extract only the first line if multiple lines
+                            lines = tags_text.strip().split("\n")
+                            tags_text = lines[0].strip()
+
+                            # Parse tags from the response
+                            tags = []
+                            for tag in tags_text.split(","):
+                                tag = tag.strip()
+                                # Filter out empty tags and tags that look like incomplete thoughts
+                                if tag and not tag.startswith("<") and len(tag) > 1:
+                                    tags.append(tag)
+
+                            # Limit to max_tags and ensure at least 1 tag
+                            if tags:
+                                tags = tags[:max_tags]
+                                logger.info(
+                                    f"Successfully generated {len(tags)} tags: {tags}"
+                                )
+                                return tags
+                            else:
+                                logger.error(
+                                    "No valid tags extracted from Ollama response"
+                                )
+                                return None
+                        else:
+                            logger.error("Empty tags response received from Ollama")
+                            return None
+                    else:
+                        error_text = await response.text()
+                        logger.error(
+                            f"Ollama API error: {response.status} - {error_text}"
+                        )
+                        return None
+
+        except (aiohttp.ClientConnectionError, OSError, IOError) as e:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Network error on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+            else:
+                logger.error(f"Network error after {max_retries} attempts: {e}")
+                return None
+        except (
+            aiohttp.ServerTimeoutError,
+            aiohttp.ConnectionTimeoutError,
+            aiohttp.SocketTimeoutError,
+        ) as e:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+            else:
+                logger.error(
+                    f"Ollama API request timed out after {max_retries} attempts"
+                )
+                return None
+        except aiohttp.ClientError as e:
+            logger.error(f"HTTP client error generating tags with Ollama: {e}")
+            return None
+        except (ValueError, TypeError, KeyError) as e:
+            logger.error(f"Data error generating tags with Ollama: {e}")
+            return None
+        except Exception as e:
+            logger.error(
+                f"Unexpected error generating tags with Ollama: {type(e).__name__}: {e}"
+            )
+            return None
