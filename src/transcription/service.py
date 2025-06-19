@@ -62,6 +62,8 @@ async def update_transcription(session: AsyncSession, task_id: str, **kwargs) ->
             "estimated_completion_time",
             "extra_metadata",
             "audio_duration",
+            "summary",
+            "transcription_text",
         }
 
         for key, value in kwargs.items():

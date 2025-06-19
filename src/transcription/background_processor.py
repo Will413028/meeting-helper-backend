@@ -11,6 +11,8 @@ from src.whisperx_diarize import whisperx_diarize_with_progress
 from src.task_manager import task_manager, TaskStatus
 from src.database import AsyncSessionLocal
 from src.transcription.service import update_transcription
+from src.transcription.ollama_service import generate_summary, check_ollama_availability
+from src.transcription.srt_utils import extract_text_from_srt
 from src.logger import logger
 
 # Global dictionary to track running processes
@@ -174,25 +176,58 @@ async def process_audio_async(
         if not os.path.exists(srt_file_path):
             raise Exception("Failed to generate SRT file")
 
+        # Extract transcription text from SRT
+        transcription_text = extract_text_from_srt(srt_file_path)
+
+        # Generate summary if Ollama is available
+        summary = None
+        if transcription_text:
+            try:
+                # Check if Ollama is available
+                if await check_ollama_availability():
+                    logger.info(f"Generating summary for task {task_id}")
+                    summary = await generate_summary(transcription_text)
+                    if summary:
+                        logger.info(
+                            f"Successfully generated summary for task {task_id}"
+                        )
+                    else:
+                        logger.warning(f"Failed to generate summary for task {task_id}")
+                else:
+                    logger.warning(
+                        "Ollama is not available, skipping summary generation"
+                    )
+            except Exception as e:
+                logger.error(f"Error generating summary for task {task_id}: {e}")
+                # Continue without summary - don't fail the entire transcription
+
         # Complete the task
         result = {
             "audio_file": os.path.basename(audio_path),
             "srt_file": srt_filename,
             "srt_path": srt_file_path,
+            "has_summary": summary is not None,
+            "has_transcription_text": transcription_text is not None,
         }
         await task_manager.complete_task(task_id, result)
 
         # Update database with completion
         async with AsyncSessionLocal() as session:
-            await update_transcription(
-                session,
-                task_id=task_id,
-                status="completed",
-                completed_at=datetime.now(),
-                srt_path=srt_file_path,
-                result=result,
-                progress=100,
-            )
+            update_data = {
+                "status": "completed",
+                "completed_at": datetime.now(),
+                "srt_path": srt_file_path,
+                "result": result,
+                "progress": 100,
+            }
+
+            # Add transcription text and summary if available
+            if transcription_text:
+                update_data["transcription_text"] = transcription_text
+            if summary:
+                update_data["summary"] = summary
+
+            await update_transcription(session, task_id, **update_data)
 
         logger.info(f"Successfully completed transcription task {task_id}")
 
@@ -273,14 +308,10 @@ async def _run_whisperx_with_cancellation(
     # Run in executor to avoid blocking
     try:
         await loop.run_in_executor(None, run_with_cancellation_check)
-    except Exception as e:
-        if "cancelled by user" in str(e).lower():
-            # This is expected for cancelled tasks
-            logger.info(f"Task {task_id} execution stopped due to cancellation")
-            raise
-        else:
-            # Re-raise other exceptions
-            raise
+    except Exception:
+        # This is expected for cancelled tasks
+        logger.info(f"Task {task_id} execution stopped due to cancellation")
+        raise
 
 
 async def _cleanup_cancelled_task(task_id: str, audio_path: str):

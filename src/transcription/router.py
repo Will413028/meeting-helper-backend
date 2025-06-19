@@ -36,7 +36,10 @@ from src.transcription.service import (
     cleanup_old_transcriptions,
     get_transcriptions,
     update_transcription_api,
+    update_transcription,
 )
+from src.transcription.ollama_service import generate_summary, check_ollama_availability
+from src.transcription.srt_utils import extract_text_from_srt
 from src.transcription.schemas import (
     CreateTranscriptionParams,
     GetTranscriptionsParams,
@@ -671,3 +674,85 @@ async def _update_transcription(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
+
+
+@router.post("/v1/transcription/{transcription_id}/generate-summary")
+async def _generate_summary_for_transcription(
+    transcription_id: int,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Generate or regenerate summary for an existing transcription"""
+
+    # Get transcription details
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcription not found",
+        )
+
+    # Check if Ollama is available
+    if not await check_ollama_availability():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ollama service is not available",
+        )
+
+    # Extract text from SRT if not already available
+    transcription_text = transcription.transcription_text
+    if not transcription_text and transcription.srt_path:
+        if os.path.exists(transcription.srt_path):
+            transcription_text = extract_text_from_srt(transcription.srt_path)
+            if transcription_text:
+                # Save the extracted text
+                await update_transcription(
+                    session,
+                    task_id=transcription.task_id,
+                    transcription_text=transcription_text,
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="SRT file not found",
+            )
+
+    if not transcription_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No transcription text available",
+        )
+
+    # Generate summary in background
+    async def generate_and_save_summary():
+        try:
+            summary = await generate_summary(transcription_text)
+            if summary:
+                from src.database import AsyncSessionLocal
+
+                async with AsyncSessionLocal() as session:
+                    await update_transcription(
+                        session, task_id=transcription.task_id, summary=summary
+                    )
+                logger.info(
+                    f"Successfully generated summary for transcription {transcription_id}"
+                )
+            else:
+                logger.error(
+                    f"Failed to generate summary for transcription {transcription_id}"
+                )
+        except Exception as e:
+            logger.error(
+                f"Error generating summary for transcription {transcription_id}: {e}"
+            )
+
+    background_tasks.add_task(generate_and_save_summary)
+
+    return {
+        "message": "Summary generation started",
+        "transcription_id": transcription_id,
+    }
