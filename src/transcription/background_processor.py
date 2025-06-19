@@ -11,7 +11,11 @@ from src.whisperx_diarize import whisperx_diarize_with_progress
 from src.task_manager import task_manager, TaskStatus
 from src.database import AsyncSessionLocal
 from src.transcription.service import update_transcription
-from src.transcription.ollama_service import generate_summary, check_ollama_availability
+from src.transcription.ollama_service import (
+    generate_summary,
+    check_ollama_availability,
+    generate_tags,
+)
 from src.transcription.srt_utils import extract_text_from_srt
 from src.logger import logger
 
@@ -179,12 +183,14 @@ async def process_audio_async(
         # Extract transcription text from SRT
         transcription_text = extract_text_from_srt(srt_file_path)
 
-        # Generate summary if Ollama is available
+        # Generate summary and tags if Ollama is available
         summary = None
+        tags = None
         if transcription_text:
             try:
                 # Check if Ollama is available
                 if await check_ollama_availability():
+                    # Generate summary
                     logger.info(f"Generating summary for task {task_id}")
                     summary = await generate_summary(transcription_text)
                     if summary:
@@ -193,13 +199,23 @@ async def process_audio_async(
                         )
                     else:
                         logger.warning(f"Failed to generate summary for task {task_id}")
+
+                    # Generate tags
+                    logger.info(f"Generating tags for task {task_id}")
+                    tags = await generate_tags(transcription_text)
+                    if tags:
+                        logger.info(
+                            f"Successfully generated {len(tags)} tags for task {task_id}"
+                        )
+                    else:
+                        logger.warning(f"Failed to generate tags for task {task_id}")
                 else:
                     logger.warning(
-                        "Ollama is not available, skipping summary generation"
+                        "Ollama is not available, skipping summary and tags generation"
                     )
             except Exception as e:
-                logger.error(f"Error generating summary for task {task_id}: {e}")
-                # Continue without summary - don't fail the entire transcription
+                logger.error(f"Error generating summary/tags for task {task_id}: {e}")
+                # Continue without summary/tags - don't fail the entire transcription
 
         # Complete the task
         result = {
@@ -208,6 +224,8 @@ async def process_audio_async(
             "srt_path": srt_file_path,
             "has_summary": summary is not None,
             "has_transcription_text": transcription_text is not None,
+            "has_tags": tags is not None and len(tags) > 0,
+            "tags_count": len(tags) if tags else 0,
         }
         await task_manager.complete_task(task_id, result)
 
@@ -221,11 +239,13 @@ async def process_audio_async(
                 "progress": 100,
             }
 
-            # Add transcription text and summary if available
+            # Add transcription text, summary, and tags if available
             if transcription_text:
                 update_data["transcription_text"] = transcription_text
             if summary:
                 update_data["summary"] = summary
+            if tags:
+                update_data["tags"] = tags
 
             await update_transcription(session, task_id, **update_data)
 
