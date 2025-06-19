@@ -702,6 +702,93 @@ fetch(`http://localhost:8000/v1/transcription/123/srt`)
   });
 ```
 
+### 17. POST /v1/transcription/{transcription_id}/generate-summary
+
+Generate or regenerate a summary for an existing transcription using Ollama AI.
+
+#### Request
+
+- **Method**: POST
+- **Path Parameter**: transcription_id (integer) - The ID of the transcription
+
+#### Response
+
+- **Success (200)**: Summary generation started
+  ```json
+  {
+    "message": "Summary generation started",
+    "transcription_id": 123
+  }
+  ```
+
+- **Error (404)**: Transcription not found
+  ```json
+  {
+    "detail": "Transcription not found"
+  }
+  ```
+
+- **Error (503)**: Ollama service unavailable
+  ```json
+  {
+    "detail": "Ollama service is not available"
+  }
+  ```
+
+- **Error (400)**: No transcription text available
+  ```json
+  {
+    "detail": "No transcription text available"
+  }
+  ```
+
+#### Notes
+
+- Summary generation runs asynchronously in the background
+- Requires Ollama to be running at `http://localhost:11435`
+- Uses the `deepseek-r1:14b` model by default
+- The generated summary will be available in the transcription detail endpoint
+
+#### Example Usage
+
+```bash
+# Generate summary for a transcription
+curl -X POST "http://localhost:8000/v1/transcription/123/generate-summary"
+
+# Check if summary is ready
+curl "http://localhost:8000/v1/transcription/123" | jq '.data.summary'
+```
+
+## AI Summary Generation
+
+The system now supports automatic AI-powered summary generation for transcriptions using Ollama.
+
+### Automatic Summary Generation
+
+When a transcription is completed, the system will automatically:
+1. Extract text from the generated SRT file
+2. Check if Ollama service is available
+3. Generate a Chinese summary using the `deepseek-r1:14b` model
+4. Save the summary and full transcription text to the database
+
+### Manual Summary Generation
+
+For existing transcriptions without summaries, use the POST `/v1/transcription/{transcription_id}/generate-summary` endpoint.
+
+### Requirements
+
+- Ollama must be installed and running: `ollama serve`
+- The `deepseek-r1:14b` model must be available: `ollama pull deepseek-r1:14b`
+- Ollama API should be accessible at `http://localhost:11435`
+
+### Summary Content
+
+The AI-generated summaries include:
+- Main discussion points (主要討論點)
+- Key decisions made (決議事項)
+- Action items if any
+- Concise overview in Chinese
+
 ## Frontend Integration Example
 
 Here's how to use these endpoints with WaveSurfer.js:
