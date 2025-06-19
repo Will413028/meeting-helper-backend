@@ -12,6 +12,7 @@ from fastapi import (
     Depends,
     Query,
     File,
+    Body,
     HTTPException,
     UploadFile,
     status,
@@ -34,17 +35,19 @@ from src.transcription.service import (
     delete_transcription_by_id,
     cleanup_old_transcriptions,
     get_transcriptions,
+    update_transcription_api
 )
 from src.transcription.schemas import (
     CreateTranscriptionParams,
     GetTranscriptionsParams,
     GetTranscriptionByTranscriptionIdResponse,
     GetTranscriptionResponse,
+    UpdateTranscriptionParams
 )
 from src.transcription.background_processor import (
     cancel_transcription_task,
 )
-from src.schemas import PaginatedDataResponse, DataResponse
+from src.schemas import PaginatedDataResponse, DataResponse, DetailResponse
 
 router = APIRouter(tags=["transcription"])
 
@@ -240,7 +243,7 @@ async def _get_transcriptions(
     "/v1/transcription/{transcription_id}",
     response_model=DataResponse[GetTranscriptionByTranscriptionIdResponse],
 )
-async def _get_transcription_endpoint(
+async def _get_transcription_detail(
     transcription_id: int, session: AsyncSession = Depends(get_db_session)
 ):
     try:
@@ -628,3 +631,28 @@ async def get_srt_content(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to read SRT file",
         )
+
+@router.put(
+    "/v1/transcription/{transcription_id}",
+    response_model=DetailResponse,
+)
+async def _update_transcription(
+    transcription_id: Annotated[int, Path()],
+    transcription_data: Annotated[UpdateTranscriptionParams, Body()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    try:
+        await update_transcription_api(session=session, transcription_id=transcription_id, transcription_data=transcription_data)
+
+        return DetailResponse(detail="User password reset successfully")
+
+    except HTTPException as exc:
+        logger.error("Update group error")
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.error("Update group error")
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
