@@ -30,7 +30,7 @@ async def generate_summary(
     transcription_text: str,
     model: str = "llama3.2:latest",  # Changed to llama3.2 for consistency
     ollama_api_url: str = "http://localhost:11435/api/generate",
-    max_tokens: int = 500,
+    max_tokens: int = 1500,  # Increased to ensure longer summaries
 ) -> Optional[str]:
     """
     Generate a summary of the transcription using Ollama API
@@ -45,12 +45,25 @@ async def generate_summary(
         The generated summary or None if failed
     """
 
-    # Prepare the prompt for summary generation
-    prompt = f"""請為以下會議記錄生成一個簡潔的摘要，包含主要討論點和決議事項：
+    # Prepare the prompt for summary generation with detailed requirements
+    prompt = f"""請為以下會議記錄生成一個詳細的摘要。
 
+要求：
+1. 摘要必須至少500字以上
+2. 使用條列式重點整理
+3. 包含以下部分：
+   - 會議主題與目的
+   - 主要討論事項（使用編號條列）
+   - 重要決議與結論（使用編號條列）
+   - 待辦事項與後續行動（如果有的話）
+   - 其他重要資訊
+
+請確保摘要內容完整、結構清晰，並涵蓋所有重要討論點。
+
+會議記錄：
 {transcription_text}
 
-摘要："""
+詳細摘要："""
 
     # Prepare the request payload
     payload = {
@@ -80,6 +93,39 @@ async def generate_summary(
                         summary = result.get("response", "").strip()
 
                         if summary:
+                            # Check if summary meets minimum length requirement
+                            if len(summary) < 500:
+                                logger.warning(
+                                    f"Generated summary is too short ({len(summary)} characters), regenerating..."
+                                )
+                                # Try again with a more explicit prompt
+                                enhanced_prompt = (
+                                    prompt
+                                    + "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。"
+                                )
+                                enhanced_payload = {
+                                    "model": model,
+                                    "prompt": enhanced_prompt,
+                                    "stream": False,
+                                    "options": {
+                                        "num_predict": max_tokens
+                                        * 2,  # Double the tokens for retry
+                                        "temperature": 0.7,
+                                    },
+                                }
+                                async with session.post(
+                                    ollama_api_url,
+                                    json=enhanced_payload,
+                                    timeout=aiohttp.ClientTimeout(
+                                        total=OLLAMA_GENERATE_TIMEOUT
+                                    ),
+                                ) as retry_response:
+                                    if retry_response.status == 200:
+                                        retry_result = await retry_response.json()
+                                        summary = retry_result.get(
+                                            "response", ""
+                                        ).strip()
+
                             logger.info(
                                 f"Successfully generated summary with {len(summary)} characters"
                             )
@@ -186,6 +232,110 @@ async def check_ollama_availability(
         return False
 
 
+async def _generate_fallback_tags(
+    transcription_text: str, max_tags: int = 8
+) -> Optional[list]:
+    """
+    Generate fallback tags using simple keyword extraction when Ollama fails
+
+    Args:
+        transcription_text: The transcription text
+        max_tags: Maximum number of tags to generate
+
+    Returns:
+        A list of fallback tags or None
+    """
+    try:
+        import re
+        from collections import Counter
+
+        # Common stop words in Chinese
+        stop_words = {
+            "的",
+            "了",
+            "在",
+            "是",
+            "我",
+            "有",
+            "和",
+            "就",
+            "不",
+            "人",
+            "都",
+            "一",
+            "一個",
+            "這",
+            "那",
+            "大",
+            "中",
+            "上",
+            "個",
+            "地",
+            "為",
+            "子",
+            "他",
+            "來",
+            "發",
+            "說",
+            "們",
+            "到",
+            "作",
+            "要",
+            "會",
+            "用",
+            "也",
+            "去",
+            "過",
+            "很",
+            "還",
+            "可以",
+            "這個",
+            "那個",
+            "什麼",
+            "怎麼",
+            "因為",
+            "所以",
+            "但是",
+            "如果",
+            "或者",
+            "然後",
+            "現在",
+            "已經",
+            "可能",
+            "應該",
+            "需要",
+            "進行",
+            "通過",
+            "這樣",
+        }
+
+        # Extract Chinese words (2-4 characters)
+        chinese_pattern = r"[\u4e00-\u9fff]{2,4}"
+        words = re.findall(chinese_pattern, transcription_text)
+
+        # Filter out stop words and count frequency
+        word_counts = Counter(word for word in words if word not in stop_words)
+
+        # Get most common words as tags
+        tags = []
+        for word, count in word_counts.most_common(max_tags * 2):
+            if len(tags) >= max_tags:
+                break
+            if 2 <= len(word) <= 5:
+                tags.append(word)
+
+        if tags:
+            logger.info(f"Generated {len(tags)} fallback tags: {tags}")
+            return tags
+        else:
+            # If no tags found, return some generic tags
+            return ["會議記錄", "討論內容"]
+
+    except Exception as e:
+        logger.error(f"Error generating fallback tags: {e}")
+        return ["會議記錄"]
+
+
 async def generate_tags(
     transcription_text: str,
     model: str = "llama3.2:latest",  # Changed to llama3.2 which might follow instructions better
@@ -202,24 +352,28 @@ async def generate_tags(
         max_tags: Maximum number of tags to generate (default: 8)
 
     Returns:
-        A list of tags or None if failed
+        A list of tags (1-5 words each) or None if failed
     """
 
-    # Prepare the prompt for tag generation
-    prompt = f"""Generate tags for the following meeting transcript. Output ONLY the tags separated by commas, nothing else.
+    # Prepare the prompt for tag generation with very explicit instructions
+    prompt = f"""你是一個標籤生成器。你的任務是為會議記錄生成標籤。
 
-Requirements:
-- Generate 1 to {max_tags} tags
-- Tags should be concise and relevant
-- Tags should reflect main topics and key concepts
-- Use Traditional Chinese
-- No punctuation or special characters
-- Output format: tag1, tag2, tag3
+重要：只輸出標籤，用逗號分隔，不要輸出任何其他內容。
+不要解釋，不要描述，只要標籤。
 
-Meeting transcript:
-{transcription_text}
+範例輸出格式：
+會議討論, 專案進度, 技術問題, 預算規劃
 
-Tags:"""
+要求：
+- 生成 1 到 {max_tags} 個標籤
+- 每個標籤 1-5 個字
+- 使用繁體中文
+- 不要標點符號
+
+會議記錄：
+{transcription_text[:1000]}...
+
+標籤（只輸出標籤，逗號分隔）："""
 
     # Prepare the request payload
     payload = {
@@ -227,8 +381,10 @@ Tags:"""
         "prompt": prompt,
         "stream": False,
         "options": {
-            "num_predict": 100,  # Limit tokens for tags
-            "temperature": 0.3,  # Even lower temperature for more deterministic output
+            "num_predict": 50,  # Further limit tokens for tags
+            "temperature": 0.1,  # Very low temperature for deterministic output
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
         },
     }
 
@@ -264,16 +420,70 @@ Tags:"""
 
                             tags_text = re.sub(r"<[^>]+>", "", tags_text).strip()
 
+                            # If response contains explanations, try to extract tags
+                            # Look for patterns like "1. tag1 2. tag2" or "tag1, tag2"
+                            if "：" in tags_text or ":" in tags_text:
+                                # Extract content after colon
+                                parts = re.split(r"[:：]", tags_text)
+                                if len(parts) > 1:
+                                    tags_text = parts[-1].strip()
+
+                            # Remove numbered lists
+                            tags_text = re.sub(r"\d+\.\s*", "", tags_text)
+
                             # Extract only the first line if multiple lines
                             lines = tags_text.strip().split("\n")
                             tags_text = lines[0].strip()
 
+                            # Remove common explanation phrases
+                            explanation_patterns = [
+                                r"^.*?標籤[是為有]?[:：]?\s*",
+                                r"^.*?tags?[是為有]?[:：]?\s*",
+                                r"^.*?關鍵詞[是為有]?[:：]?\s*",
+                                r"^.*?主題[是為有]?[:：]?\s*",
+                            ]
+                            for pattern in explanation_patterns:
+                                tags_text = re.sub(
+                                    pattern, "", tags_text, flags=re.IGNORECASE
+                                )
+
                             # Parse tags from the response
                             tags = []
-                            for tag in tags_text.split(","):
+
+                            # First try comma
+                            potential_tags = tags_text.split(",")
+                            if len(potential_tags) == 1 and "，" in tags_text:
+                                potential_tags = tags_text.split("，")
+                            if len(potential_tags) == 1 and "、" in tags_text:
+                                potential_tags = tags_text.split("、")
+
+                            for tag in potential_tags:
                                 tag = tag.strip()
-                                # Filter out empty tags and tags that look like incomplete thoughts
-                                if tag and not tag.startswith("<") and len(tag) > 1:
+                                # Remove quotes
+                                tag = tag.strip('"\'""' "")
+
+                                # Skip if tag contains sentence-ending punctuation
+                                if any(
+                                    p in tag for p in ["。", ".", "！", "!", "？", "?"]
+                                ):
+                                    continue
+
+                                # Count words - for Chinese text, we'll count characters
+                                # For mixed or English text, we'll count space-separated words
+                                if any("\u4e00" <= c <= "\u9fff" for c in tag):
+                                    # Contains Chinese characters - count characters
+                                    word_count = len(tag)
+                                else:
+                                    # English or other text - count space-separated words
+                                    word_count = len(tag.split())
+
+                                # Filter out empty tags, tags with incomplete thoughts, and tags outside 1-5 word range
+                                if (
+                                    tag
+                                    and not tag.startswith("<")
+                                    and 1 <= word_count <= 5
+                                    and len(tag) <= 20  # Max 20 characters total
+                                ):
                                     tags.append(tag)
 
                             # Limit to max_tags and ensure at least 1 tag
@@ -285,9 +495,12 @@ Tags:"""
                                 return tags
                             else:
                                 logger.error(
-                                    "No valid tags extracted from Ollama response"
+                                    f"No valid tags extracted from Ollama response: {tags_text[:200]}"
                                 )
-                                return None
+                                # Try to generate fallback tags from the transcription
+                                return await _generate_fallback_tags(
+                                    transcription_text, max_tags
+                                )
                         else:
                             logger.error("Empty tags response received from Ollama")
                             return None

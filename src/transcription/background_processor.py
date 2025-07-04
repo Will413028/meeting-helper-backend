@@ -16,7 +16,10 @@ from src.transcription.ollama_service import (
     check_ollama_availability,
     generate_tags,
 )
-from src.transcription.srt_utils import extract_text_from_srt
+from src.transcription.srt_utils import (
+    extract_text_from_srt,
+    convert_srt_file_to_traditional,
+)
 from src.logger import logger
 
 # Global dictionary to track running processes
@@ -180,8 +183,22 @@ async def process_audio_async(
         if not os.path.exists(srt_file_path):
             raise Exception("Failed to generate SRT file")
 
-        # Extract transcription text from SRT
-        transcription_text = extract_text_from_srt(srt_file_path)
+        # Convert SRT file from simplified to traditional Chinese
+        if language == "zh":  # Only convert for Chinese language
+            logger.info(
+                f"Converting SRT file to traditional Chinese for task {task_id}"
+            )
+            if convert_srt_file_to_traditional(srt_file_path):
+                logger.info("Successfully converted SRT file to traditional Chinese")
+            else:
+                logger.warning(
+                    "Failed to convert SRT file to traditional Chinese, continuing with original"
+                )
+
+        # Extract transcription text from SRT (already converted to traditional)
+        transcription_text = extract_text_from_srt(
+            srt_file_path, convert_to_traditional=False
+        )
 
         # Generate summary and tags if Ollama is available
         summary = None
