@@ -4,14 +4,18 @@ import re
 from pathlib import Path
 from typing import Optional
 from src.logger import logger
+import opencc
 
 
-def extract_text_from_srt(srt_path: str) -> Optional[str]:
+def extract_text_from_srt(
+    srt_path: str, convert_to_traditional: bool = True
+) -> Optional[str]:
     """
     Extract plain text from an SRT file
 
     Args:
         srt_path: Path to the SRT file
+        convert_to_traditional: Whether to convert simplified Chinese to traditional Chinese
 
     Returns:
         The extracted text without timestamps or None if failed
@@ -43,6 +47,15 @@ def extract_text_from_srt(srt_path: str) -> Optional[str]:
         # Clean up extra spaces
         full_text = re.sub(r"\s+", " ", full_text).strip()
 
+        # Convert simplified to traditional Chinese if requested
+        if convert_to_traditional and full_text:
+            try:
+                converter = opencc.OpenCC("s2twp")  # 簡體轉繁體（台灣用詞）
+                full_text = converter.convert(full_text)
+                logger.info("Converted text from simplified to traditional Chinese")
+            except Exception as e:
+                logger.warning(f"Failed to convert to traditional Chinese: {e}")
+
         logger.info(f"Extracted {len(full_text)} characters from SRT file")
         return full_text
 
@@ -51,12 +64,15 @@ def extract_text_from_srt(srt_path: str) -> Optional[str]:
         return None
 
 
-def parse_srt_with_speakers(srt_path: str) -> Optional[dict]:
+def parse_srt_with_speakers(
+    srt_path: str, convert_to_traditional: bool = True
+) -> Optional[dict]:
     """
     Parse SRT file and extract text with speaker information
 
     Args:
         srt_path: Path to the SRT file
+        convert_to_traditional: Whether to convert simplified Chinese to traditional Chinese
 
     Returns:
         Dictionary with speaker segments or None if failed
@@ -74,6 +90,14 @@ def parse_srt_with_speakers(srt_path: str) -> Optional[dict]:
 
         matches = re.findall(pattern, content, re.DOTALL)
 
+        # Initialize converter if needed
+        converter = None
+        if convert_to_traditional:
+            try:
+                converter = opencc.OpenCC("s2twp")  # 簡體轉繁體（台灣用詞）
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenCC converter: {e}")
+
         segments = []
         for match in matches:
             index, start_time, end_time, text = match
@@ -87,6 +111,13 @@ def parse_srt_with_speakers(srt_path: str) -> Optional[dict]:
             else:
                 speaker = "UNKNOWN"
 
+            # Convert to traditional Chinese if converter is available
+            if converter and text:
+                try:
+                    text = converter.convert(text)
+                except Exception as e:
+                    logger.warning(f"Failed to convert segment text: {e}")
+
             segments.append(
                 {
                     "index": int(index),
@@ -97,8 +128,53 @@ def parse_srt_with_speakers(srt_path: str) -> Optional[dict]:
                 }
             )
 
+        if converter and segments:
+            logger.info("Converted SRT segments from simplified to traditional Chinese")
+
         return {"segments": segments, "total_segments": len(segments)}
 
     except Exception as e:
         logger.error(f"Error parsing SRT file {srt_path}: {e}")
         return None
+
+
+def convert_srt_file_to_traditional(srt_path: str) -> bool:
+    """
+    Convert an SRT file from simplified to traditional Chinese and overwrite it
+
+    Args:
+        srt_path: Path to the SRT file to convert
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not Path(srt_path).exists():
+            logger.error(f"SRT file not found: {srt_path}")
+            return False
+
+        # Read the original content
+        with open(srt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Convert to traditional Chinese
+        try:
+            converter = opencc.OpenCC("s2twp")  # 簡體轉繁體（台灣用詞）
+            converted_content = converter.convert(content)
+
+            # Write back to the same file
+            with open(srt_path, "w", encoding="utf-8") as f:
+                f.write(converted_content)
+
+            logger.info(
+                f"Successfully converted SRT file to traditional Chinese: {srt_path}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to convert SRT file to traditional Chinese: {e}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error processing SRT file {srt_path}: {e}")
+        return False

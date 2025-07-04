@@ -22,4 +22,5 @@ dependencies = [
     "pyjwt>=2.10.1",
     "aiofiles>=24.1.0",
     "mutagen>=1.47.0",
+    "opencc-python-reimplemented>=0.1.7",
 ]
