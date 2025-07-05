@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import get_db_session
 from src.logger import logger
 from src.schemas import DataResponse
-from src.transcription.segment_schemas import (
+from src.segment.schemas import (
     TranscriptSegmentsResponse,
     TranscriptSegmentResponse,
     TranscriptSegmentUpdate,
@@ -16,7 +16,7 @@ from src.transcription.segment_schemas import (
     SegmentAtTimeResponse,
     BulkSegmentUpdate,
 )
-from src.transcription.segment_service import (
+from src.segment.service import (
     get_transcript_segments,
     update_transcript_segment,
     update_speaker,

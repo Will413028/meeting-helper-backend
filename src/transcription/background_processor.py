@@ -2,11 +2,16 @@
 
 import os
 import asyncio
+from sqlalchemy import select
+from src.models import Transcription
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict
 import subprocess
-
+from src.segment.service import (
+    initialize_segments_from_srt,
+)
+from src.whisperx_diarize import terminate_process
 from src.whisperx_diarize import whisperx_diarize_with_progress
 from src.task_manager import task_manager, TaskStatus
 from src.database import AsyncSessionLocal
@@ -50,9 +55,6 @@ async def _process_queue():
                     logger.info(f"Processing next task from queue: {task_id}")
                     # Get task details from database
                     async with AsyncSessionLocal() as session:
-                        from sqlalchemy import select
-                        from src.models import Transcription
-
                         result = await session.execute(
                             select(Transcription).filter_by(task_id=task_id)
                         )
@@ -281,12 +283,6 @@ async def process_audio_async(
 
             # Initialize transcript segments from the generated SRT file
             try:
-                from src.transcription.segment_service import (
-                    initialize_segments_from_srt,
-                )
-                from sqlalchemy import select
-                from src.models import Transcription
-
                 # Get the transcription record
                 result = await session.execute(
                     select(Transcription).filter_by(task_id=task_id)
@@ -430,7 +426,6 @@ async def cancel_transcription_task(task_id: str) -> bool:
 
     if cancelled:
         # Try to terminate the WhisperX process if it's running
-        from src.whisperx_diarize import terminate_process
 
         process_terminated = terminate_process(task_id)
         if process_terminated:
