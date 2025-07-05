@@ -8,7 +8,7 @@ import opencc
 
 
 def extract_text_from_srt(
-    srt_path: str, convert_to_traditional: bool = True
+    srt_path: str, convert_to_traditional: bool = True, preserve_speakers: bool = True
 ) -> Optional[str]:
     """
     Extract plain text from an SRT file
@@ -16,6 +16,7 @@ def extract_text_from_srt(
     Args:
         srt_path: Path to the SRT file
         convert_to_traditional: Whether to convert simplified Chinese to traditional Chinese
+        preserve_speakers: Whether to preserve speaker information in the output
 
     Returns:
         The extracted text without timestamps or None if failed
@@ -40,6 +41,18 @@ def extract_text_from_srt(
             # Clean up the text
             text = match.strip()
             if text:
+                # Convert speaker labels if preserving speakers
+                if preserve_speakers:
+                    # Convert [SPEAKER_XX]: to 講者 X: (increment number by 1)
+                    def convert_speaker(match):
+                        speaker_num = int(match.group(1)) + 1
+                        return f"講者 {speaker_num}: "
+
+                    text = re.sub(r"\[SPEAKER_(\d+)\]:\s*", convert_speaker, text)
+                else:
+                    # Remove speaker labels entirely
+                    text = re.sub(r"\[SPEAKER_\d+\]:\s*", "", text)
+
                 text_parts.append(text)
 
         full_text = " ".join(text_parts)
@@ -106,10 +119,13 @@ def parse_srt_with_speakers(
             # Check if text contains speaker information (e.g., "SPEAKER_01: text")
             speaker_match = re.match(r"^(SPEAKER_\d+):\s*(.+)$", text, re.DOTALL)
             if speaker_match:
-                speaker = speaker_match.group(1)
+                # Replace SPEAKER with 講者 (Chinese for speaker)
+                # Convert SPEAKER_00 to 講者 1, SPEAKER_01 to 講者 2, etc.
+                speaker_num = int(speaker_match.group(1).replace("SPEAKER_", "")) + 1
+                speaker = f"講者 {speaker_num}"
                 text = speaker_match.group(2).strip()
             else:
-                speaker = "UNKNOWN"
+                speaker = "未知講者"  # Unknown speaker in Chinese
 
             # Convert to traditional Chinese if converter is available
             if converter and text:
@@ -138,12 +154,15 @@ def parse_srt_with_speakers(
         return None
 
 
-def convert_srt_file_to_traditional(srt_path: str) -> bool:
+def convert_srt_file_to_traditional(
+    srt_path: str, convert_speakers: bool = True
+) -> bool:
     """
-    Convert an SRT file from simplified to traditional Chinese and overwrite it
+    Convert an SRT file from simplified to traditional Chinese and convert speaker labels
 
     Args:
         srt_path: Path to the SRT file to convert
+        convert_speakers: Whether to convert speaker labels from [SPEAKER_XX]: to 講者 XX:
 
     Returns:
         True if successful, False otherwise
@@ -156,6 +175,16 @@ def convert_srt_file_to_traditional(srt_path: str) -> bool:
         # Read the original content
         with open(srt_path, "r", encoding="utf-8") as f:
             content = f.read()
+
+        # Convert speaker labels if requested
+        if convert_speakers:
+            # Convert [SPEAKER_XX]: to 講者 X: (increment number by 1)
+            def convert_speaker(match):
+                speaker_num = int(match.group(1)) + 1
+                return f"講者 {speaker_num}: "
+
+            content = re.sub(r"\[SPEAKER_(\d+)\]:\s*", convert_speaker, content)
+            logger.info("Converted speaker labels to Chinese format")
 
         # Convert to traditional Chinese
         try:

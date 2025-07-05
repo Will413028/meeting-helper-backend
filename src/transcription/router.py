@@ -21,6 +21,7 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import FileResponse
+from pydub import AudioSegment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,19 +81,56 @@ async def _transcribe_audio(
     # Create task
     task_id = task_manager.create_task(file.filename)
 
-    # Save uploaded file
-    audio_filename = f"{task_id}_{Path(file.filename).stem}{file_extension}"
-    audio_path = os.path.join(settings.OUTPUT_DIR, audio_filename)
-    srt_path = os.path.join(settings.OUTPUT_DIR, f"{task_id}.srt")
-    with open(audio_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Save uploaded file to a temporary location first
+    temp_file = None
+    try:
+        # Create a temporary file to save the uploaded content
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=file_extension
+        ) as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+            temp_path = temp_file.name
 
+        # Convert to MP3
+        logger.info(f"Converting {file.filename} to MP3 format")
+
+        # Load the audio file
+        audio = AudioSegment.from_file(temp_path)
+
+        # Set up MP3 output path
+        mp3_filename = f"{task_id}_{Path(file.filename).stem}.mp3"
+        audio_path = os.path.join(settings.OUTPUT_DIR, mp3_filename)
+
+        # Export as MP3 with good quality settings
+        audio.export(
+            audio_path,
+            format="mp3",
+            bitrate="192k",  # Good quality bitrate
+            parameters=["-q:a", "2"],  # MP3 quality setting (0-9, lower is better)
+        )
+
+        logger.info(f"Successfully converted audio to MP3: {audio_path}")
+
+    except Exception as e:
+        logger.error(f"Error converting audio to MP3: {e}")
+        # Clean up task if conversion fails
+        task_manager.update_task(task_id, "failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to convert audio to MP3: {str(e)}",
+        )
+    finally:
+        # Clean up temporary file
+        if temp_file and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+    srt_path = os.path.join(settings.OUTPUT_DIR, f"{task_id}.srt")
     output_dir = settings.OUTPUT_DIR
 
     # Generate a title from the filename (remove extension)
     transcription_title = Path(file.filename).stem
 
-    # Extract audio duration immediately after saving the file
+    # Extract audio duration from the converted MP3 file
     audio_duration = get_audio_duration(audio_path)
     if audio_duration is None:
         logger.warning(
@@ -114,6 +152,8 @@ async def _transcribe_audio(
             extra_metadata={
                 "file_size": os.path.getsize(audio_path),
                 "original_filename": file.filename,
+                "converted_to_mp3": True,
+                "original_format": file_extension,
             },
         ),
     )
@@ -707,7 +747,12 @@ async def _generate_summary_for_transcription(
     transcription_text = transcription.transcription_text
     if not transcription_text and transcription.srt_path:
         if os.path.exists(transcription.srt_path):
-            transcription_text = extract_text_from_srt(transcription.srt_path)
+            # Extract text with speaker information preserved
+            transcription_text = extract_text_from_srt(
+                transcription.srt_path,
+                convert_to_traditional=True,
+                preserve_speakers=True,
+            )
             if transcription_text:
                 # Save the extracted text
                 await update_transcription(
