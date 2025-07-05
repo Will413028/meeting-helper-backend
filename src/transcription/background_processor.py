@@ -183,21 +183,24 @@ async def process_audio_async(
         if not os.path.exists(srt_file_path):
             raise Exception("Failed to generate SRT file")
 
-        # Convert SRT file from simplified to traditional Chinese
+        # Convert SRT file: both speaker labels and text to traditional Chinese
         if language == "zh":  # Only convert for Chinese language
             logger.info(
-                f"Converting SRT file to traditional Chinese for task {task_id}"
+                f"Converting SRT file (speaker labels and text) to traditional Chinese for task {task_id}"
             )
-            if convert_srt_file_to_traditional(srt_file_path):
-                logger.info("Successfully converted SRT file to traditional Chinese")
+            # This will convert both speaker labels ([SPEAKER_XX]: to 講者 XX:) and text to traditional Chinese
+            if convert_srt_file_to_traditional(srt_file_path, convert_speakers=True):
+                logger.info(
+                    "Successfully converted SRT file with speaker labels to traditional Chinese"
+                )
             else:
                 logger.warning(
                     "Failed to convert SRT file to traditional Chinese, continuing with original"
                 )
 
-        # Extract transcription text from SRT (already converted to traditional)
+        # Extract transcription text from SRT (already converted, preserve speaker info)
         transcription_text = extract_text_from_srt(
-            srt_file_path, convert_to_traditional=False
+            srt_file_path, convert_to_traditional=False, preserve_speakers=True
         )
 
         # Generate summary and tags if Ollama is available

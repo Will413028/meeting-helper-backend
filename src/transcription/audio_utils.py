@@ -10,7 +10,7 @@ from mutagen.oggvorbis import OggVorbis
 from src.logger import logger
 
 
-def get_audio_duration(file_path: str) -> Optional[float]:
+def get_audio_duration(file_path: str) -> Optional[int]:
     """
     Extract audio duration from file using mutagen
 
@@ -18,14 +18,14 @@ def get_audio_duration(file_path: str) -> Optional[float]:
         file_path: Path to the audio file
 
     Returns:
-        Duration in seconds, or None if unable to extract
+        Duration in seconds (as integer), or None if unable to extract
     """
     try:
         # Try to load the file with mutagen
         audio_file = MutagenFile(file_path)
 
         if audio_file is not None and hasattr(audio_file.info, "length"):
-            duration = audio_file.info.length
+            duration = int(audio_file.info.length)
             logger.info(
                 f"Extracted audio duration: {duration} seconds from {file_path}"
             )
@@ -36,16 +36,16 @@ def get_audio_duration(file_path: str) -> Optional[float]:
 
             if ext == ".mp3":
                 audio = MP3(file_path)
-                duration = audio.info.length
+                duration = int(audio.info.length)
             elif ext in [".mp4", ".m4a"]:
                 audio = MP4(file_path)
-                duration = audio.info.length
+                duration = int(audio.info.length)
             elif ext == ".flac":
                 audio = FLAC(file_path)
-                duration = audio.info.length
+                duration = int(audio.info.length)
             elif ext == ".ogg":
                 audio = OggVorbis(file_path)
-                duration = audio.info.length
+                duration = int(audio.info.length)
             else:
                 logger.warning(f"Unable to extract duration for file type: {ext}")
                 return None
