@@ -29,9 +29,21 @@ def extract_text_from_srt(
         with open(srt_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Remove SRT formatting
-        # Pattern to match subtitle blocks: number, timestamp, text
-        pattern = r"\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n(.+?)(?=\n\n|\n\d+\n|\Z)"
+        # Try to detect format - check if it's simple format or standard SRT
+        # Simple format: HH:MM:SS\ntext
+        # Standard SRT: number\nHH:MM:SS,mmm --> HH:MM:SS,mmm\ntext
+
+        if re.search(r"^\d+\n\d{2}:\d{2}:\d{2},\d{3} --> ", content, re.MULTILINE):
+            # Standard SRT format with sequence numbers and timestamps
+            pattern = r"\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n(.+?)(?=\n\n|\n\d+\n|\Z)"
+        elif re.search(r"^\d{2}:\d{2}:\d{2},\d{3} --> ", content, re.MULTILINE):
+            # SRT format without sequence numbers
+            pattern = (
+                r"\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n(.+?)(?=\n\n|\Z)"
+            )
+        else:
+            # Simple format (HH:MM:SS\ntext)
+            pattern = r"\d{2}:\d{2}:\d{2}\n(.+?)(?=\n\n|\Z)"
 
         matches = re.findall(pattern, content, re.DOTALL)
 
@@ -98,10 +110,36 @@ def parse_srt_with_speakers(
         with open(srt_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Pattern to match subtitle blocks with potential speaker tags
-        pattern = r"(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.+?)(?=\n\n|\n\d+\n|\Z)"
+        # Try to detect format
+        segments = []
 
-        matches = re.findall(pattern, content, re.DOTALL)
+        if re.search(r"^\d+\n\d{2}:\d{2}:\d{2},\d{3} --> ", content, re.MULTILINE):
+            # Standard SRT format with sequence numbers
+            pattern = r"(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.+?)(?=\n\n|\n\d+\n|\Z)"
+            matches = re.findall(pattern, content, re.DOTALL)
+
+            for match in matches:
+                index, start_time, end_time, text = match
+                segments.append((index, start_time, end_time, text))
+
+        elif re.search(r"^\d{2}:\d{2}:\d{2},\d{3} --> ", content, re.MULTILINE):
+            # SRT format without sequence numbers
+            pattern = r"(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.+?)(?=\n\n|\Z)"
+            matches = re.findall(pattern, content, re.DOTALL)
+
+            for i, match in enumerate(matches):
+                start_time, end_time, text = match
+                segments.append((str(i + 1), start_time, end_time, text))
+
+        else:
+            # Simple format (HH:MM:SS\ntext)
+            pattern = r"(\d{2}:\d{2}:\d{2})\n(.+?)(?=\n\n|\Z)"
+            matches = re.findall(pattern, content, re.DOTALL)
+
+            for i, match in enumerate(matches):
+                start_time, text = match
+                # For simple format, we don't have end times, so we'll use empty string
+                segments.append((str(i + 1), f"{start_time},000", "", text))
 
         # Initialize converter if needed
         converter = None
@@ -111,9 +149,8 @@ def parse_srt_with_speakers(
             except Exception as e:
                 logger.warning(f"Failed to initialize OpenCC converter: {e}")
 
-        segments = []
-        for match in matches:
-            index, start_time, end_time, text = match
+        result_segments = []
+        for index, start_time, end_time, text in segments:
             text = text.strip()
 
             # Check if text contains speaker information (e.g., "SPEAKER_01: text")
@@ -134,7 +171,7 @@ def parse_srt_with_speakers(
                 except Exception as e:
                     logger.warning(f"Failed to convert segment text: {e}")
 
-            segments.append(
+            result_segments.append(
                 {
                     "index": int(index),
                     "start": start_time,
@@ -144,10 +181,10 @@ def parse_srt_with_speakers(
                 }
             )
 
-        if converter and segments:
+        if converter and result_segments:
             logger.info("Converted SRT segments from simplified to traditional Chinese")
 
-        return {"segments": segments, "total_segments": len(segments)}
+        return {"segments": result_segments, "total_segments": len(result_segments)}
 
     except Exception as e:
         logger.error(f"Error parsing SRT file {srt_path}: {e}")
@@ -206,4 +243,109 @@ def convert_srt_file_to_traditional(
 
     except Exception as e:
         logger.error(f"Error processing SRT file {srt_path}: {e}")
+        return False
+
+
+def remove_srt_sequence_numbers(srt_path: str) -> bool:
+    """
+    Remove sequence numbers from an SRT file, keeping only timestamps and text
+
+    Args:
+        srt_path: Path to the SRT file to process
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not Path(srt_path).exists():
+            logger.error(f"SRT file not found: {srt_path}")
+            return False
+
+        # Read the original content
+        with open(srt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Pattern to match subtitle blocks: number, timestamp, text
+        # We'll capture the timestamp and text parts, but not the number
+        pattern = r"\d+\n(\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n.+?)(?=\n\n|\n\d+\n|\Z)"
+
+        matches = re.findall(pattern, content, re.DOTALL)
+
+        # Rebuild the SRT content without sequence numbers
+        new_content = []
+        for match in matches:
+            # Each match contains timestamp line and text
+            new_content.append(match.strip())
+
+        # Join with double newlines between entries
+        final_content = "\n\n".join(new_content)
+
+        # Ensure file ends with a newline
+        if final_content and not final_content.endswith("\n"):
+            final_content += "\n"
+
+        # Write back to the same file
+        with open(srt_path, "w", encoding="utf-8") as f:
+            f.write(final_content)
+
+        logger.info(f"Successfully removed sequence numbers from SRT file: {srt_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error removing sequence numbers from SRT file {srt_path}: {e}")
+        return False
+
+
+def convert_srt_to_simple_format(srt_path: str) -> bool:
+    """
+    Convert SRT file to a simplified format with only start times (no end times)
+    and simplified timestamp format (HH:MM:SS instead of HH:MM:SS,mmm)
+
+    Args:
+        srt_path: Path to the SRT file to process
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if not Path(srt_path).exists():
+            logger.error(f"SRT file not found: {srt_path}")
+            return False
+
+        # Read the original content
+        with open(srt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Pattern to match subtitle blocks without sequence numbers
+        # Captures: start_time, end_time (ignored), and text
+        pattern = (
+            r"(\d{2}:\d{2}:\d{2}),\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n(.+?)(?=\n\n|\Z)"
+        )
+
+        matches = re.findall(pattern, content, re.DOTALL)
+
+        # Rebuild content with simplified format
+        new_content = []
+        for start_time, text in matches:
+            # start_time is already in HH:MM:SS format (we just ignore the milliseconds)
+            text = text.strip()
+            if text:
+                new_content.append(f"{start_time}\n{text}")
+
+        # Join with double newlines between entries
+        final_content = "\n\n".join(new_content)
+
+        # Ensure file ends with a newline
+        if final_content and not final_content.endswith("\n"):
+            final_content += "\n"
+
+        # Write back to the same file
+        with open(srt_path, "w", encoding="utf-8") as f:
+            f.write(final_content)
+
+        logger.info(f"Successfully converted SRT to simple format: {srt_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error converting SRT to simple format {srt_path}: {e}")
         return False

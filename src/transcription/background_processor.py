@@ -19,6 +19,7 @@ from src.transcription.ollama_service import (
 from src.transcription.srt_utils import (
     extract_text_from_srt,
     convert_srt_file_to_traditional,
+    convert_srt_to_simple_format,
 )
 from src.logger import logger
 
@@ -182,6 +183,15 @@ async def process_audio_async(
 
         if not os.path.exists(srt_file_path):
             raise Exception("Failed to generate SRT file")
+
+        # Convert SRT to simple format (remove sequence numbers and end times)
+        logger.info(f"Converting SRT to simple format for task {task_id}")
+        if convert_srt_to_simple_format(srt_file_path):
+            logger.info("Successfully converted SRT to simple format")
+        else:
+            logger.warning(
+                "Failed to convert SRT to simple format, continuing with original"
+            )
 
         # Convert SRT file: both speaker labels and text to traditional Chinese
         if language == "zh":  # Only convert for Chinese language
