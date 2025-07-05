@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, status
 
 from src.auth.router import router as auth_router
 from src.transcription.router import router as transcription_router
+from src.transcription.segment_router import router as segment_router
 from src.group.router import router as group_router
 from src.user.router import router as user_router
 from src.setting.router import router as setting_router
@@ -70,5 +71,6 @@ def read_root():
 app.include_router(auth_router)
 app.include_router(group_router)
 app.include_router(transcription_router)
+app.include_router(segment_router)
 app.include_router(user_router)
 app.include_router(setting_router)

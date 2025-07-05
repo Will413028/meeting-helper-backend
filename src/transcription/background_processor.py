@@ -279,6 +279,44 @@ async def process_audio_async(
 
             await update_transcription(session, task_id, **update_data)
 
+            # Initialize transcript segments from the generated SRT file
+            try:
+                from src.transcription.segment_service import (
+                    initialize_segments_from_srt,
+                )
+                from sqlalchemy import select
+                from src.models import Transcription
+
+                # Get the transcription record
+                result = await session.execute(
+                    select(Transcription).filter_by(task_id=task_id)
+                )
+                transcription = result.scalar_one_or_none()
+
+                if transcription and transcription.transcription_id:
+                    logger.info(f"Initializing transcript segments for task {task_id}")
+                    segments_initialized = await initialize_segments_from_srt(
+                        session, transcription.transcription_id
+                    )
+                    if segments_initialized:
+                        logger.info(
+                            f"Successfully initialized transcript segments for task {task_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to initialize transcript segments for task {task_id}"
+                        )
+                else:
+                    logger.error(
+                        f"Could not find transcription record for task {task_id}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Error initializing transcript segments for task {task_id}: {e}"
+                )
+                # Don't fail the entire transcription if segment initialization fails
+
         logger.info(f"Successfully completed transcription task {task_id}")
 
     except Exception as e:

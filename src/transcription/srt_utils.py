@@ -153,16 +153,28 @@ def parse_srt_with_speakers(
         for index, start_time, end_time, text in segments:
             text = text.strip()
 
-            # Check if text contains speaker information (e.g., "SPEAKER_01: text")
+            # Check if text contains speaker information
+            # Handle both original format (SPEAKER_01: text) and converted format (講者 1: text)
             speaker_match = re.match(r"^(SPEAKER_\d+):\s*(.+)$", text, re.DOTALL)
+            chinese_speaker_match = re.match(r"^(講者\s*\d+):\s*(.+)$", text, re.DOTALL)
+
             if speaker_match:
-                # Replace SPEAKER with 講者 (Chinese for speaker)
+                # Original format: SPEAKER_01: text
                 # Convert SPEAKER_00 to 講者 1, SPEAKER_01 to 講者 2, etc.
                 speaker_num = int(speaker_match.group(1).replace("SPEAKER_", "")) + 1
                 speaker = f"講者 {speaker_num}"
-                text = speaker_match.group(2).strip()
+                text = speaker_match.group(2).strip()  # Extract only the content
+            elif chinese_speaker_match:
+                # Already converted format: 講者 1: text
+                speaker = chinese_speaker_match.group(1).replace(
+                    " ", " "
+                )  # Normalize spacing
+                text = chinese_speaker_match.group(
+                    2
+                ).strip()  # Extract only the content
             else:
                 speaker = "未知講者"  # Unknown speaker in Chinese
+                # text remains as is (no speaker prefix to remove)
 
             # Convert to traditional Chinese if converter is available
             if converter and text:
