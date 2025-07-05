@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from src.models import TranscriptSegment, Speaker, Transcription
-from src.transcription.segment_schemas import (
+from src.segment.schemas import (
     SpeakerResponse,
     TranscriptSegmentResponse,
     TranscriptSegmentsResponse,
