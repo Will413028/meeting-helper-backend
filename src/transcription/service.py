@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.schemas import DataResponse, PaginatedDataResponse
-from src.models import Transcription
+from src.models import Transcription, Speaker
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     CreateTranscriptionParams,
@@ -88,14 +88,30 @@ async def get_transcription_by_transcription_id(
         Transcription.tags,
         Transcription.speaks,
         Transcription.summary,
-        Transcription.transcription_text,
         Transcription.audio_duration,
         Transcription.created_at,
     ).where(Transcription.transcription_id == transcription_id)
 
     result = (await session.execute(query)).mappings().first()
 
-    return DataResponse[GetTranscriptionByTranscriptionIdResponse](data=result)
+    speaker_result = await session.execute(
+        select(Speaker.speaker_id, Speaker.display_name)
+        .filter_by(transcription_id=transcription_id)
+        .order_by(Speaker.order_index)
+    )
+    speakers = speaker_result.mappings().all()
+
+    data = GetTranscriptionByTranscriptionIdResponse(
+        transcription_id=result.transcription_id,
+        transcription_title=result.transcription_title,
+        tags=result.tags,
+        summary=result.summary,
+        audio_duration=result.audio_duration,
+        created_at=result.created_at,
+        speakers=speakers,
+    )
+
+    return DataResponse[GetTranscriptionByTranscriptionIdResponse](data=data)
 
 
 async def get_transcriptions(

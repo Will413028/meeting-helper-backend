@@ -76,9 +76,8 @@ class GetTranscriptionByTranscriptionIdResponse(BaseModel):
     transcription_id: int
     transcription_title: str
     tags: list[str] | None
-    speaks: dict | None
+    speakers: list[dict] | None
     summary: str | None
-    transcription_text: str | None
     audio_duration: float
     created_at: datetime
 
