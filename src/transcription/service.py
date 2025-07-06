@@ -185,17 +185,34 @@ async def update_transcription_api(
     transcription_data: UpdateTranscriptionParams,
 ):
     try:
-        update_query = (
-            update(Transcription)
-            .where(Transcription.transcription_id == transcription_id)
-            .values(
-                transcription_title=transcription_data.transcription_title,
-                tags=transcription_data.tags,
-                speaks=transcription_data.speaks,
+        # Update transcription title and tags if provided
+        update_values = {}
+        if transcription_data.transcription_title is not None:
+            update_values["transcription_title"] = (
+                transcription_data.transcription_title
             )
-        )
+        if transcription_data.tags is not None:
+            update_values["tags"] = transcription_data.tags
 
-        await session.execute(update_query)
+        if update_values:
+            update_query = (
+                update(Transcription)
+                .where(Transcription.transcription_id == transcription_id)
+                .values(**update_values)
+            )
+            await session.execute(update_query)
+
+        # Update speaker display names if provided
+        if transcription_data.speakers is not None:
+            for speaker_info in transcription_data.speakers:
+                speaker_update_query = (
+                    update(Speaker)
+                    .where(Speaker.speaker_id == speaker_info.speaker_id)
+                    .where(Speaker.transcription_id == transcription_id)
+                    .values(display_name=speaker_info.display_name)
+                )
+                await session.execute(speaker_update_query)
+
         await session.commit()
 
     except Exception as e:
