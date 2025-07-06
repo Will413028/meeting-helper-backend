@@ -72,11 +72,16 @@ class CreateTranscriptionParams(BaseModel):
     }
 
 
+class SpeakerInfo(BaseModel):
+    speaker_id: int
+    display_name: str
+
+
 class GetTranscriptionByTranscriptionIdResponse(BaseModel):
     transcription_id: int
     transcription_title: str
     tags: list[str] | None
-    speakers: list[dict] | None
+    speakers: list[SpeakerInfo] | None
     summary: str | None
     audio_duration: float
     created_at: datetime
@@ -85,4 +90,4 @@ class GetTranscriptionByTranscriptionIdResponse(BaseModel):
 class UpdateTranscriptionParams(BaseModel):
     transcription_title: str | None
     tags: list[str] | None
-    speaks: list[str] | None
+    speakers: list[SpeakerInfo] | None
