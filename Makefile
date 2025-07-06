@@ -6,6 +6,20 @@ run:
 run-prod:
 	uv run uvicorn src.main:app --host 0.0.0.0 --port 8701
 
+.PHONY: run-https
+run-https:
+	uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem
+
+.PHONY: run-prod-https
+run-prod-https:
+	uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --workers 4
+
+.PHONY: generate-cert
+generate-cert:
+	@mkdir -p certs
+	@openssl req -x509 -newkey rsa:4096 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj "/C=TW/ST=Taiwan/L=Taipei/O=Development/CN=localhost"
+	@echo "Self-signed certificate generated in ./certs/"
+
 .PHONY: lint
 lint:
 	uv run ruff format

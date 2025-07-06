@@ -149,3 +149,12 @@ uploads/
 *.ogg
 *.mp4
 *.webm
+
+# SSL/TLS certificates
+certs/
+*.pem
+*.crt
+*.key
+*.csr
+*.p12
+*.pfx

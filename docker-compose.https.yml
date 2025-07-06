@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+
+  saywe_db:
+    container_name: saywe_db
+    image: postgres:17
+    command: postgres -c 'max_connections=250'
+    restart: unless-stopped
+    env_file:
+      - ./env/.env.db
+    volumes:
+      - ./data/postgresql_data:/var/lib/postgresql/data
+    networks:
+      - saywe_network 
+
+  saywe_backend:
+    container_name: saywe_backend
+    build: .
+    restart: unless-stopped
+    env_file:
+      - ./env/.env
+    depends_on:
+      - saywe_db
+    networks:
+      - saywe_network
+    # 不再暴露端口，只通過 nginx 訪問
+
+  nginx:
+    container_name: saywe_nginx
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./certs:/etc/nginx/ssl:ro
+    depends_on:
+      - saywe_backend
+    networks:
+      - saywe_network
+
+networks:
+  saywe_network:
+    name: saywe_network
+    driver: bridge
