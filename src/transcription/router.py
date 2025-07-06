@@ -53,6 +53,8 @@ from src.transcription.background_processor import (
 )
 from src.transcription.audio_utils import get_audio_duration
 from src.schemas import PaginatedDataResponse, DataResponse, DetailResponse
+from src.transcription.background_processor import queue_audio_processing
+from src.database import AsyncSessionLocal
 
 router = APIRouter(tags=["transcription"])
 
@@ -157,9 +159,6 @@ async def _transcribe_audio(
             },
         ),
     )
-
-    # Add to processing queue instead of starting immediately
-    from src.transcription.background_processor import queue_audio_processing
 
     background_tasks.add_task(
         queue_audio_processing,
@@ -777,8 +776,6 @@ async def _generate_summary_for_transcription(
         try:
             summary = await generate_summary(transcription_text)
             if summary:
-                from src.database import AsyncSessionLocal
-
                 async with AsyncSessionLocal() as session:
                     await update_transcription(
                         session, task_id=transcription.task_id, summary=summary
