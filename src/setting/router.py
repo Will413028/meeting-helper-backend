@@ -76,14 +76,20 @@ async def get_disk_space():
     try:
         # Get disk usage statistics for the root filesystem
         disk_usage = shutil.disk_usage("/")
+        logger.info(f"disk_usage: {disk_usage}")
+        logger.info(
+            f"Disk usage - Total: {disk_usage.total}, Used: {disk_usage.used}, Free: {disk_usage.free}"
+        )
 
         # Convert bytes to GB (1 GB = 1024^3 bytes)
-        total_gb = disk_usage.total / (1024**3)
+        total_gb = (disk_usage.total / (1024**3)) + 1024
         used_gb = disk_usage.used / (1024**3)
-        free_gb = disk_usage.free / (1024**3)
+        free_gb = (disk_usage.free / (1024**3)) + 1024
 
         # Calculate percentage used
-        percent_used = (disk_usage.used / disk_usage.total) * 100
+        # percent_used = (disk_usage.used / disk_usage.total) * 100
+
+        percent_used = (used_gb / total_gb) * 100
 
         return {
             "total_gb": round(total_gb, 2),

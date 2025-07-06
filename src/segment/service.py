@@ -64,12 +64,11 @@ async def initialize_segments_from_srt(
         # Extract unique speakers
         speakers_map = {}
         speaker_colors = [
-            "#6366f1",
-            "#eab308",
-            "#10b981",
-            "#f59e0b",
-            "#ef4444",
-            "#8b5cf6",
+            "#8181F3",
+            "#FACC15",
+            "#2FB551",
+            "#4981BE",
+            "#E8362C",
         ]
 
         for segment in parsed_data["segments"]:

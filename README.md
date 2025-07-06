@@ -47,19 +47,42 @@ make setup-env
 
 ## Running the Server
 
+### HTTP Mode (Default)
+
 1. Start the FastAPI server:
 ```bash
-uv run uvicorn src.main:app --reload
+make run
+# Or manually:
+uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8701
 ```
 
-Or using the Python module directly:
+2. The API will be available at `http://localhost:8701`
+
+3. Access the interactive API documentation at `http://localhost:8701/docs`
+
+### HTTPS Mode
+
+#### Quick Setup (Development)
 ```bash
-uv run python src/main.py
+# Run the setup script
+./setup-https.sh
+
+# Or manually:
+# 1. Generate self-signed certificate
+make generate-cert
+
+# 2. Run with HTTPS
+make run-https
 ```
 
-2. The API will be available at `http://localhost:8000`
+#### Production Setup with Docker
+```bash
+# 1. Generate or obtain SSL certificates
+# 2. Run with Docker Compose
+docker-compose -f docker-compose.https.yml up -d
+```
 
-3. Access the interactive API documentation at `http://localhost:8000/docs`
+For detailed HTTPS setup instructions, see [HTTPS_SETUP.md](HTTPS_SETUP.md)
 
 ## API Endpoints
 
