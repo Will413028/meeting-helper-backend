@@ -126,7 +126,9 @@ async def _transcribe_audio(
         if temp_file and os.path.exists(temp_path):
             os.unlink(temp_path)
 
-    srt_path = os.path.join(settings.OUTPUT_DIR, f"{task_id}.srt")
+    # The SRT filename will match the MP3 filename (without extension)
+    srt_filename = f"{task_id}_{Path(file.filename).stem}.srt"
+    srt_path = os.path.join(settings.OUTPUT_DIR, srt_filename)
     output_dir = settings.OUTPUT_DIR
 
     # Generate a title from the filename (remove extension)
@@ -177,7 +179,7 @@ async def _transcribe_audio(
 
 
 @router.get("/v1/task/{task_id}")
-async def get_task_status(task_id: str):
+async def _get_task_status(task_id: str):
     """Get the status and progress of a transcription task"""
     task = task_manager.get_task(task_id)
     if not task:
@@ -189,14 +191,17 @@ async def get_task_status(task_id: str):
 
 
 @router.get("/v1/tasks")
-async def list_tasks():
+async def _list_tasks():
     """List all transcription tasks"""
     tasks = [task.to_dict() for task in task_manager.tasks.values()]
+
+    tasks = [task for task in tasks if task["status"] in ["processing", "pending"]]
+
     return {"count": len(tasks), "tasks": tasks}
 
 
 @router.get("/v1/queue/status")
-async def get_queue_status():
+async def _get_queue_status():
     """Get the current queue status"""
     queue_status = task_manager.get_queue_status()
 
@@ -233,7 +238,7 @@ async def get_queue_status():
 
 
 @router.post("/v1/task/{task_id}/cancel")
-async def cancel_task(task_id: str):
+async def _cancel_task(task_id: str):
     """Cancel a running transcription task"""
     # Check if task exists
     task = task_manager.get_task(task_id)
@@ -316,7 +321,7 @@ async def _get_transcription_detail(
 
 
 @router.delete("/v1/transcription/{transcription_id}")
-async def delete_transcription_endpoint(
+async def _delete_transcription_endpoint(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -366,7 +371,7 @@ async def delete_transcription_endpoint(
 
 
 @router.post("/v1/transcriptions/cleanup")
-async def cleanup_old_transcriptions_endpoint(
+async def _cleanup_old_transcriptions_endpoint(
     days: int = 30,
     delete_files: bool = False,
     session: AsyncSession = Depends(get_db_session),
@@ -417,7 +422,7 @@ async def cleanup_old_transcriptions_endpoint(
 
 
 @router.get("/v1/transcription/{transcription_id}/download")
-async def download_transcription_files(
+async def _download_transcription_files(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -497,7 +502,7 @@ async def download_transcription_files(
 
 
 @router.get("/v1/transcription/{transcription_id}/audio")
-async def stream_audio(
+async def _stream_audio(
     transcription_id: int,
     range: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
@@ -593,7 +598,7 @@ async def stream_audio(
 
 
 @router.get("/v1/transcription/{transcription_id}/audio/info")
-async def get_audio_info(
+async def _get_audio_info(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -640,7 +645,7 @@ async def get_audio_info(
 
 
 @router.get("/v1/transcription/{transcription_id}/srt")
-async def get_srt_content(
+async def _get_srt_content(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):

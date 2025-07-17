@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.schemas import DataResponse, PaginatedDataResponse
-from src.models import Transcription, Speaker
+from src.models import Transcription, Speaker, TranscriptSegment
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     CreateTranscriptionParams,
@@ -126,7 +126,7 @@ async def get_transcriptions(
         Transcription.tags,
         Transcription.audio_duration,
         Transcription.created_at,
-    )
+    ).where(Transcription.status == "completed").order_by(Transcription.transcription_id.desc())
 
     if name:
         query = query.filter(Transcription.transcription_title.like(f"%{name}%"))
@@ -154,13 +154,27 @@ async def get_transcriptions(
 async def delete_transcription_by_id(
     session: AsyncSession, transcription_id: int
 ) -> bool:
-    """Delete transcription by transcription_id"""
+    """Delete transcription by transcription_id along with related speakers and segments"""
+    # First check if transcription exists
     result = await session.execute(
         select(Transcription).filter_by(transcription_id=transcription_id)
     )
     transcription = result.scalar_one_or_none()
 
     if transcription:
+        # Delete related TranscriptSegments
+        await session.execute(
+            delete(TranscriptSegment).where(
+                TranscriptSegment.transcription_id == transcription_id
+            )
+        )
+        
+        # Delete related Speakers
+        await session.execute(
+            delete(Speaker).where(Speaker.transcription_id == transcription_id)
+        )
+        
+        # Delete the transcription itself
         await session.delete(transcription)
         await session.commit()
         return True
