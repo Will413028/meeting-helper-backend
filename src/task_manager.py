@@ -29,6 +29,19 @@ class TranscriptionTask:
         self.current_step: str = "Waiting to start"
         self.queue_position: Optional[int] = None
 
+    @property
+    def remaining_seconds(self) -> Optional[int]:
+        """Calculate remaining seconds until estimated completion."""
+        if not self.estimated_completion_time:
+            return None
+        
+        now = datetime.now()
+        if self.estimated_completion_time <= now:
+            return 0
+        
+        remaining = self.estimated_completion_time - now
+        return int(remaining.total_seconds())
+
     def to_dict(self):
         return {
             "task_id": self.task_id,
@@ -44,6 +57,7 @@ class TranscriptionTask:
             "estimated_completion_time": self.estimated_completion_time.isoformat()
             if self.estimated_completion_time
             else None,
+            "remaining_seconds": self.remaining_seconds,
             "error_message": self.error_message,
             "result": self.result,
             "queue_position": self.queue_position,

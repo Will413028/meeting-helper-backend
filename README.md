@@ -280,16 +280,17 @@ uv run ./src/whisperx_diarize.py
 
 ### API test with curl
 ```bash
-curl -X POST "http://localhost:8701/api/v1/transcribe" \
-  -F "file=@audio.mp4" \
-  -F "model=large-v3" \
-  -F "language=zh" \
+curl -X POST "https://114.34.174.244:8701/api/v1/transcribe?language=zh" \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F "file=@test1.mp3" \
   | python -m json.tool
 ```
 
-### Async transcription with progress tracking
-```bash
-python test_async_transcribe.py audio.mp4
-```
+curl -X POST "http://0.0.0.0/api/v1/transcribe?language=zh" \
+  -H 'accept: application/json' \
+  -H 'Content-Type: multipart/form-data' \
+  -F "file=@test1.mp3" \
+  | python -m json.tool
 
 For complete API documentation, see [API_DOCUMENTATION.md](API_DOCUMENTATION.md)

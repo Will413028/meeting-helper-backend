@@ -29,7 +29,8 @@ def get_connector():
 async def generate_summary(
     transcription_text: str,
     model: str = "llama3.2:latest",  # Changed to llama3.2 for consistency
-    ollama_api_url: str = "http://localhost:11435/api/generate",
+    # ollama_api_url: str = "http://localhost:11435/api/generate",
+    ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
     max_tokens: int = 1500,  # Increased to ensure longer summaries
 ) -> Optional[str]:
     """
@@ -182,7 +183,8 @@ async def generate_summary(
 
 
 async def check_ollama_availability(
-    ollama_api_url: str = "http://localhost:11435/api/tags",
+    # ollama_api_url: str = "http://localhost:11435/api/tags",
+    ollama_api_url: str = "http://0.0.0.0:11435/api/tags",
 ) -> bool:
     """
     Check if Ollama API is available and has models
@@ -339,7 +341,8 @@ async def _generate_fallback_tags(
 async def generate_tags(
     transcription_text: str,
     model: str = "llama3.2:latest",  # Changed to llama3.2 which might follow instructions better
-    ollama_api_url: str = "http://localhost:11435/api/generate",
+    # ollama_api_url: str = "http://localhost:11435/api/generate",
+    ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
     max_tags: int = 8,
 ) -> Optional[list]:
     """

@@ -132,53 +132,53 @@ def whisperx_diarize_with_progress(
                 current_step = "diarizing"
                 current_progress = steps_progress[current_step][0]
 
-        # Check for percentage progress
-        progress_match = patterns["progress"].search(line)
-        if progress_match:
-            percentage = float(progress_match.group(1))
-            # If we see progress percentage, we're in transcribing phase
-            if "Transcript:" in line or percentage > 0:
-                current_step = "transcribing"
-            # Map percentage to current step range
-            if current_step in steps_progress:
-                min_prog, max_prog, _ = steps_progress[current_step]
-                current_progress = min_prog + int(
-                    (max_prog - min_prog) * percentage / 100
-                )
-
-        # Check for segment progress
-        segment_match = patterns["segment"].search(line)
-        if segment_match:
-            current_segment = int(segment_match.group(1))
-            total_segments = int(segment_match.group(2))
-            if current_step == "transcribing" and total_segments > 0:
-                min_prog, max_prog, _ = steps_progress[current_step]
-                current_progress = (
-                    min_prog + (max_prog - min_prog) * current_segment // total_segments
-                )
-
-        # Estimate completion time
-        if current_progress > 15:  # After initial loading
-            elapsed = (datetime.now() - start_time).total_seconds()
-            if current_progress > 0:
-                estimated_total = elapsed * 100 / current_progress
-                remaining = estimated_total - elapsed
-                estimated_completion = datetime.now() + timedelta(seconds=remaining)
-
-            # Call progress callback
-            if progress_callback and current_step in steps_progress:
-                try:
-                    progress_callback(
-                        current_progress,
-                        steps_progress[current_step][2],
-                        estimated_completion,
+            # Check for percentage progress
+            progress_match = patterns["progress"].search(line)
+            if progress_match:
+                percentage = float(progress_match.group(1))
+                # If we see progress percentage, we're in transcribing phase
+                if "Transcript:" in line or percentage > 0:
+                    current_step = "transcribing"
+                # Map percentage to current step range
+                if current_step in steps_progress:
+                    min_prog, max_prog, _ = steps_progress[current_step]
+                    current_progress = min_prog + int(
+                        (max_prog - min_prog) * percentage / 100
                     )
-                except Exception as e:
-                    # If callback raises an exception (e.g., cancellation), terminate the process
-                    print(f"Progress callback raised exception: {e}")
-                    if task_id and task_id in _running_processes:
-                        terminate_process(task_id)
-                    raise
+
+            # Check for segment progress
+            segment_match = patterns["segment"].search(line)
+            if segment_match:
+                current_segment = int(segment_match.group(1))
+                total_segments = int(segment_match.group(2))
+                if current_step == "transcribing" and total_segments > 0:
+                    min_prog, max_prog, _ = steps_progress[current_step]
+                    current_progress = (
+                        min_prog + (max_prog - min_prog) * current_segment // total_segments
+                    )
+
+            # Estimate completion time
+            if current_progress > 15:  # After initial loading
+                elapsed = (datetime.now() - start_time).total_seconds()
+                if current_progress > 0:
+                    estimated_total = elapsed * 100 / current_progress
+                    remaining = estimated_total - elapsed
+                    estimated_completion = datetime.now() + timedelta(seconds=remaining)
+
+                # Call progress callback
+                if progress_callback and current_step in steps_progress:
+                    try:
+                        progress_callback(
+                            current_progress,
+                            steps_progress[current_step][2],
+                            estimated_completion,
+                        )
+                    except Exception as e:
+                        # If callback raises an exception (e.g., cancellation), terminate the process
+                        print(f"Progress callback raised exception: {e}")
+                        if task_id and task_id in _running_processes:
+                            terminate_process(task_id)
+                        raise
 
         # Wait for process to complete
         process.wait()
