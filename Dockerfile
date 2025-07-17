@@ -1,31 +1,56 @@
-FROM python:3.13-slim
+FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
 
-# 設置工作目錄
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set CUDA environment variables
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# Set working directory
 WORKDIR /app
 
-# 安裝系統依賴
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    libsndfile1 \
+    curl \
+    build-essential \
+    cmake \
+    pkg-config \
+    python3-pip \
+    python3-venv \
+    python3-dev \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 安裝 uv
-RUN pip install uv
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# 複製項目文件
+# Copy project files
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 COPY alembic.ini ./
 COPY alembic/ ./alembic/
 
-# 安裝 Python 依賴
+# Install Python dependencies with uv
 RUN uv sync --frozen
 
-# 創建必要的目錄
+# Install WhisperX and its dependencies separately
+# Install torch with CUDA support first - using 2.2.0 for better compatibility
+RUN uv pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Install transformers and other dependencies needed for WhisperX diarization
+RUN uv pip install transformers==4.36.0 pyannote.audio==3.1.1
+
+# Then install WhisperX
+RUN uv pip install whisperx
+
+# Create necessary directories
 RUN mkdir -p uploads
 
-# 暴露端口
+# Expose port
 EXPOSE 8000
 
-# 運行應用
+# Run the application
 CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
