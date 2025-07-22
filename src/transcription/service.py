@@ -120,13 +120,17 @@ async def get_transcriptions(
     page: int = 1,
     page_size: int = 10,
 ) -> PaginatedDataResponse[GetTranscriptionResponse]:
-    query = select(
-        Transcription.transcription_id,
-        Transcription.transcription_title,
-        Transcription.tags,
-        Transcription.audio_duration,
-        Transcription.created_at,
-    ).where(Transcription.status == "completed").order_by(Transcription.transcription_id.desc())
+    query = (
+        select(
+            Transcription.transcription_id,
+            Transcription.transcription_title,
+            Transcription.tags,
+            Transcription.audio_duration,
+            Transcription.created_at,
+        )
+        .where(Transcription.status == "completed")
+        .order_by(Transcription.transcription_id.desc())
+    )
 
     if name:
         query = query.filter(Transcription.transcription_title.like(f"%{name}%"))
@@ -168,12 +172,12 @@ async def delete_transcription_by_id(
                 TranscriptSegment.transcription_id == transcription_id
             )
         )
-        
+
         # Delete related Speakers
         await session.execute(
             delete(Speaker).where(Speaker.transcription_id == transcription_id)
         )
-        
+
         # Delete the transcription itself
         await session.delete(transcription)
         await session.commit()

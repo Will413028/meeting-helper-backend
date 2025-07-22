@@ -4,6 +4,8 @@ import aiohttp
 import asyncio
 from typing import Optional
 from src.logger import logger
+import re
+from collections import Counter
 
 # Configuration
 OLLAMA_GENERATE_TIMEOUT = 900  # 15 minutes for generation
@@ -248,9 +250,6 @@ async def _generate_fallback_tags(
         A list of fallback tags or None
     """
     try:
-        import re
-        from collections import Counter
-
         # Common stop words in Chinese
         stop_words = {
             "的",

@@ -154,7 +154,8 @@ def whisperx_diarize_with_progress(
                 if current_step == "transcribing" and total_segments > 0:
                     min_prog, max_prog, _ = steps_progress[current_step]
                     current_progress = (
-                        min_prog + (max_prog - min_prog) * current_segment // total_segments
+                        min_prog
+                        + (max_prog - min_prog) * current_segment // total_segments
                     )
 
             # Estimate completion time

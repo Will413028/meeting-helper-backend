@@ -34,11 +34,11 @@ class TranscriptionTask:
         """Calculate remaining seconds until estimated completion."""
         if not self.estimated_completion_time:
             return None
-        
+
         now = datetime.now()
         if self.estimated_completion_time <= now:
             return 0
-        
+
         remaining = self.estimated_completion_time - now
         return int(remaining.total_seconds())
 
