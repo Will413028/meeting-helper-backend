@@ -1,5 +1,8 @@
-"""Helper functions to run async database operations from sync context"""
+import tempfile
+import os
+import uuid
 
+import glob
 import json
 from src.logger import logger
 
@@ -17,9 +20,6 @@ def update_transcription_sync(task_id: str, **kwargs) -> bool:
 
         # For now, we'll store the updates in a temporary file that can be processed
         # by a background task. This avoids the event loop issues entirely.
-        import tempfile
-        import os
-        import uuid
 
         # Create a unique filename for this update
         update_id = str(uuid.uuid4())
@@ -50,9 +50,6 @@ def process_pending_updates():
     Process any pending transcription updates from the temporary files.
     This should be called periodically by a background task.
     """
-    import tempfile
-    import os
-    import glob
 
     temp_dir = tempfile.gettempdir()
     pattern = os.path.join(temp_dir, "transcription_update_*.json")
