@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple
 from datetime import datetime, timezone
 import re
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
@@ -226,7 +226,7 @@ async def update_transcript_segment(
         if "content" in update_dict:
             segment.is_edited = True
 
-        segment.updated_at = datetime.now(timezone.utc)
+        segment.updated_at = func.now()
         await session.commit()
         await session.refresh(segment)
 
