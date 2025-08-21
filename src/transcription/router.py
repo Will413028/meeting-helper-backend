@@ -457,7 +457,7 @@ async def _download_transcription_files(
 
     # Create a temporary zip file
     temp_dir = tempfile.mkdtemp()
-    zip_filename = f"transcription_{transcription_id}_{transcription.transcription_title or 'download'}.zip"
+    zip_filename = f"transcription_{transcription_id}_download.zip"
     zip_path = os.path.join(temp_dir, zip_filename)
 
     try:
