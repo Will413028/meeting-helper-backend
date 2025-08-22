@@ -18,6 +18,7 @@ class GetUserResponse(BaseModel):
     user_id: int
     account: str
     name: str
+    description: str | None = None
 
     model_config = {
         "json_schema_extra": {
@@ -27,6 +28,7 @@ class GetUserResponse(BaseModel):
                     "user_id": 1,
                     "account": "rd1",
                     "name": "RD1",
+                    "description": "權限描述",
                 }
             ]
         }

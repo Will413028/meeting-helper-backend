@@ -76,7 +76,11 @@ async def create_admin_group(
 ):
     try:
         insert_query = insert(Group).values(
-            {"name": group_data.name, "role": Role.ADMIN.value}
+            {
+                "name": group_data.name,
+                "role": Role.ADMIN.value,
+                "description": "最大權限管理、帳號建立、可操作所有部門管理權限。",
+            }
         )
         await session.execute(insert_query)
         await session.commit()
@@ -108,7 +112,11 @@ async def create_group(
 ):
     try:
         insert_query = insert(Group).values(
-            {"name": group_data.name, "role": Role.USER.value}
+            {
+                "name": group_data.name,
+                "role": Role.USER.value,
+                "description": "該組別逐字稿管理權限，包含上傳、下載、刪除。",
+            }
         )
         await session.execute(insert_query)
         await session.commit()
