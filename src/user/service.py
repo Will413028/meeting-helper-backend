@@ -17,6 +17,7 @@ async def get_users(
         User.name,
         User.account,
         Group.name.label("group_name"),
+        Group.description,
     ).join(Group, User.group_id == Group.group_id)
 
     if name:

@@ -27,11 +27,12 @@ class Group(Base):
     __tablename__ = "groups"
 
     group_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(50))
     role: Mapped[str] = mapped_column(String(10), server_default=str(Role.USER.value))
     is_uncategorized: Mapped[bool] = mapped_column(  # cspell:ignore uncategorized
         server_default=false()
     )
+    description: Mapped[str] = mapped_column(String(255), nullable=True)
 
 
 class Transcription(Base):
