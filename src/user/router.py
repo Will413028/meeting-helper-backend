@@ -17,11 +17,18 @@ from src.user.schemas import (
     GetUsersParams,
     UpdateUserRequest,
     UpdateUsersGroupRequest,
+    GetUserDetailResponse,
 )
-from src.user.service import get_users, delete_user, update_user, update_users_group
+from src.user.service import (
+    get_users,
+    delete_user,
+    update_user,
+    update_users_group,
+    get_user_by_id,
+)
 from src.database import get_db_session
 from src.logger import logger
-from src.schemas import DetailResponse, PaginatedDataResponse
+from src.schemas import DetailResponse, PaginatedDataResponse, DataResponse
 
 router = APIRouter(
     tags=["users"],
@@ -39,6 +46,27 @@ async def _get_users(
             name=query_params.name,
             page=query_params.page,
             page_size=query_params.page_size,
+        )
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.get("/users/{user_id}", response_model=DataResponse[GetUserDetailResponse])
+async def _get_user_detail(
+    user_id: Annotated[int, Path()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    try:
+        return await get_user_by_id(
+            user_id=user_id,
+            session=session,
         )
 
     except HTTPException as exc:

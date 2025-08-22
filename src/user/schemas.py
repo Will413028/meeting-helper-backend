@@ -35,6 +35,15 @@ class GetUserResponse(BaseModel):
     }
 
 
+class GetUserDetailResponse(BaseModel):
+    user_id: int
+    group_name: str
+    name: str
+    account: str
+    password: str
+    description: str | None = None
+
+
 class UpdateUserRequest(BaseModel):
     group_id: int
     name: str
