@@ -1,8 +1,13 @@
 from sqlalchemy import select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas import PaginatedDataResponse
-from src.user.schemas import GetUserResponse, UpdateUserRequest, UpdateUsersGroupRequest
+from src.schemas import PaginatedDataResponse, DataResponse
+from src.user.schemas import (
+    GetUserResponse,
+    UpdateUserRequest,
+    UpdateUsersGroupRequest,
+    GetUserDetailResponse,
+)
 from src.models import User, Group
 
 
@@ -41,6 +46,27 @@ async def get_users(
         current_page=page,
         data=results,
     )
+
+
+async def get_user_by_id(
+    session: AsyncSession, user_id: int
+) -> DataResponse[GetUserDetailResponse]:
+    query = (
+        select(
+            User.user_id,
+            User.name,
+            User.account,
+            User.password,
+            Group.name.label("group_name"),
+            Group.description,
+        )
+        .join(Group, User.group_id == Group.group_id)
+        .where(User.user_id == user_id)
+    )
+
+    result = (await session.execute(query)).mappings().one()
+
+    return DataResponse[GetUserDetailResponse](data=result)
 
 
 async def delete_user(session: AsyncSession, user_ids: list[int]):
