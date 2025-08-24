@@ -175,7 +175,7 @@ async def _update_groups(
     response_model=DetailResponse,
 )
 async def _delete_groups(
-    group_ids: Annotated[list[str], Body()],
+    group_ids: Annotated[list[int], Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
     try:
