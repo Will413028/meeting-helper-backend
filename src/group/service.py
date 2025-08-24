@@ -4,6 +4,7 @@ from sqlalchemy import (
     insert,
     select,
     update,
+    delete,
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,7 +144,7 @@ async def update_groups(groups_data: UpdateGroupsRequest, session: AsyncSession)
         raise e
 
 
-async def delete_groups(session: AsyncSession, group_ids: list[str]):
+async def delete_groups(session: AsyncSession, group_ids: list[int]):
     try:
         # First, find or create the "uncategorized" group
         uncategorized_group = await get_group_by_name(session, "未分類")
@@ -167,7 +168,11 @@ async def delete_groups(session: AsyncSession, group_ids: list[str]):
             .where(User.group_id.in_(group_ids))
             .values(group_id=uncategorized_group.group_id)
         )
+
         await session.execute(update_query)
+        # delete the groups
+        delete_query = delete(Group).where(Group.group_id.in_(group_ids))
+        await session.execute(delete_query)
         await session.commit()
 
     except Exception as e:
