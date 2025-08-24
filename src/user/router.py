@@ -25,6 +25,7 @@ from src.user.service import (
     update_user,
     update_users_group,
     get_user_by_id,
+    delete_user_by_id,
 )
 from src.database import get_db_session
 from src.logger import logger
@@ -109,6 +110,26 @@ async def _update_users(
         await update_user(session=session, user_id=user_id, user_data=user_data)
 
         return DetailResponse(detail="Updated successfully")
+
+    except HTTPException as exc:
+        logger.exception(exc)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except Exception as exc:
+        logger.exception(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.delete("/users/{user_id}")
+async def _delete_user_by_id(
+    user_id: Annotated[int, Path()],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DetailResponse:
+    try:
+        await delete_user_by_id(session=session, user_id=user_id)
+
+        return DetailResponse(detail="Deleted successfully")
 
     except HTTPException as exc:
         logger.exception(exc)
