@@ -44,6 +44,12 @@ class GetUserDetailResponse(BaseModel):
     description: str | None = None
 
 
+class GetListUserResponse(BaseModel):
+    user_id: int
+    name: str
+    account: str
+
+
 class UpdateUserRequest(BaseModel):
     group_id: int
     name: str

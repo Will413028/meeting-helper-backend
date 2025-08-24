@@ -1,12 +1,13 @@
 from sqlalchemy import select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas import PaginatedDataResponse, DataResponse
+from src.schemas import PaginatedDataResponse, DataResponse, ListDataResponse
 from src.user.schemas import (
     GetUserResponse,
     UpdateUserRequest,
     UpdateUsersGroupRequest,
     GetUserDetailResponse,
+    GetListUserResponse,
 )
 from src.models import User, Group
 
@@ -44,6 +45,23 @@ async def get_users(
         total_count=total_count,
         total_pages=total_pages,
         current_page=page,
+        data=results,
+    )
+
+
+async def get_list_users(
+    session: AsyncSession,
+    group_id: int,
+) -> ListDataResponse[GetListUserResponse]:
+    query = select(
+        User.user_id,
+        User.name,
+        User.account,
+    ).where(User.group_id == group_id)
+
+    results = (await session.execute(query)).mappings().all()
+
+    return ListDataResponse[GetListUserResponse](
         data=results,
     )
 
