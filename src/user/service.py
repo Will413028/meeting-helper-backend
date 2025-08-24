@@ -69,6 +69,17 @@ async def get_user_by_id(
     return DataResponse[GetUserDetailResponse](data=result)
 
 
+async def delete_user_by_id(session: AsyncSession, user_id: int):
+    try:
+        delete_query = delete(User).where(User.user_id == user_id)
+        await session.execute(delete_query)
+        await session.commit()
+
+    except Exception as e:
+        await session.rollback()
+        raise e
+
+
 async def delete_user(session: AsyncSession, user_ids: list[int]):
     try:
         delete_query = delete(User).where(User.user_id.in_(user_ids))
