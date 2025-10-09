@@ -23,6 +23,7 @@ certs/
 *.webm
 *.srt
 *.json
+*.txt
 
 # Git
 .git/
