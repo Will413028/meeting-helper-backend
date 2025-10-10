@@ -62,7 +62,7 @@ async def _process_queue():
 
                         if transcription:
                             # Process the task
-                            await process_audio_async(
+                            await process_audio(
                                 task_id=task_id,
                                 audio_path=transcription.audio_path,
                                 output_dir=os.path.dirname(transcription.srt_path),
@@ -104,7 +104,7 @@ async def queue_audio_processing(
     logger.info(f"Task {task_id} added to queue")
 
 
-async def process_audio_async(
+async def process_audio(
     task_id: str,
     audio_path: str,
     output_dir: str,
@@ -316,8 +316,8 @@ async def process_audio_async(
         logger.info(f"Successfully completed transcription task {task_id}")
 
     except Exception as e:
-        logger.error(f"Error processing audio for task {task_id}: {e}")
-
+        logger.error(f"Error processing audio for task {task_id}: {e}", exc_info=True)
+        logger.error(f"Task {task_id} - Audio path: {audio_path}, Output dir: {output_dir}, Language: {language}")
         # Update task manager
         await task_manager.fail_task(task_id, str(e))
 

@@ -474,7 +474,7 @@ async def _download_transcription_files(
             zipf.write(transcription.audio_path, arcname=audio_filename)
 
             # Add SRT file
-            srt_filename = f"{transcription.transcription_title or 'subtitles'}.srt"
+            srt_filename = f"{transcription.transcription_title or 'subtitles'}.txt"
             zipf.write(transcription.srt_path, arcname=srt_filename)
 
         # Return the zip file
