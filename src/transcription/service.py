@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
-
+import re
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.schemas import DataResponse, PaginatedDataResponse
@@ -11,6 +11,7 @@ from src.transcription.schemas import (
     GetTranscriptionResponse,
     UpdateTranscriptionParams,
 )
+from src.logger import logger
 
 
 async def create_transcription(
@@ -222,17 +223,117 @@ async def update_transcription_api(
 
         # Update speaker display names if provided
         if transcription_data.speakers is not None:
+            # Get current speakers to track name changes
+            speaker_name_changes = []
+
             for speaker_info in transcription_data.speakers:
-                speaker_update_query = (
-                    update(Speaker)
-                    .where(Speaker.speaker_id == speaker_info.speaker_id)
-                    .where(Speaker.transcription_id == transcription_id)
-                    .values(display_name=speaker_info.display_name)
+                # Get current speaker info
+                result = await session.execute(
+                    select(Speaker).filter_by(
+                        speaker_id=speaker_info.speaker_id,
+                        transcription_id=transcription_id,
+                    )
                 )
-                await session.execute(speaker_update_query)
+                current_speaker = result.scalar_one_or_none()
+
+                if current_speaker:
+                    old_name = current_speaker.display_name
+                    new_name = speaker_info.display_name
+
+                    # Track if name actually changed
+                    if old_name != new_name:
+                        speaker_name_changes.append((old_name, new_name))
+
+                    # Update speaker
+                    speaker_update_query = (
+                        update(Speaker)
+                        .where(Speaker.speaker_id == speaker_info.speaker_id)
+                        .where(Speaker.transcription_id == transcription_id)
+                        .values(display_name=new_name)
+                    )
+                    await session.execute(speaker_update_query)
+
+            # Update summary if any speaker names changed
+            if speaker_name_changes:
+                await update_summary_speaker_names(
+                    session=session,
+                    transcription_id=transcription_id,
+                    name_changes=speaker_name_changes,
+                )
 
         await session.commit()
 
     except Exception as e:
         await session.rollback()
         raise e
+
+
+async def update_summary_speaker_names(
+    session: AsyncSession,
+    transcription_id: int,
+    name_changes: list[tuple[str, str]],
+) -> None:
+    """Update multiple speaker names in the transcription summary"""
+
+    # Get the transcription
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription or not transcription.summary:
+        return
+
+    updated_summary = transcription.summary
+
+    # Apply all name changes
+    for old_name, new_name in name_changes:
+        logger.info(f"Attempting to replace '{old_name}' with '{new_name}'")
+
+        # Pattern 1: Match exact name with word boundaries (for English/alphanumeric)
+        pattern1 = r"\b" + re.escape(old_name) + r"\b"
+
+        # Pattern 2: Match Chinese format like "講者4" or other CJK characters
+        # This pattern looks for the name followed by common Chinese punctuation or whitespace
+        pattern2 = re.escape(old_name) + r"(?=[\s，。、：；！？）」』]|$)"
+
+        # Pattern 3: Match name preceded by common Chinese punctuation
+        pattern3 = r"(?<=[\s，。、：；！？（「『])" + re.escape(old_name)
+
+        # Try all patterns
+        temp_summary = updated_summary
+
+        # First try pattern 1 (word boundaries)
+        updated_summary = re.sub(pattern1, new_name, updated_summary)
+
+        # Then try pattern 2 (followed by Chinese punctuation)
+        updated_summary = re.sub(pattern2, new_name, updated_summary)
+
+        # Then try pattern 3 (preceded by Chinese punctuation)
+        updated_summary = re.sub(pattern3, new_name, updated_summary)
+
+        if temp_summary != updated_summary:
+            logger.info(f"Successfully replaced '{old_name}' with '{new_name}'")
+        else:
+            logger.warning(f"No matches found for '{old_name}' in summary")
+
+    # Only update if there were actual changes
+    if updated_summary != transcription.summary:
+        update_query = (
+            update(Transcription)
+            .where(Transcription.transcription_id == transcription_id)
+            .values(summary=updated_summary)
+        )
+        await session.execute(update_query)
+
+        logger.info(
+            f"Successfully updated summary for transcription {transcription_id}. "
+            f"Changes made: {len(name_changes)} speaker name(s)"
+        )
+        logger.debug(f"Original summary snippet: {transcription.summary[:200]}")
+        logger.debug(f"Updated summary snippet: {updated_summary[:200]}")
+    else:
+        logger.warning(
+            f"No changes made to summary for transcription {transcription_id}. "
+            f"Speaker names might not exist in summary or patterns didn't match."
+        )
