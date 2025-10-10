@@ -317,7 +317,9 @@ async def process_audio(
 
     except Exception as e:
         logger.error(f"Error processing audio for task {task_id}: {e}", exc_info=True)
-        logger.error(f"Task {task_id} - Audio path: {audio_path}, Output dir: {output_dir}, Language: {language}")
+        logger.error(
+            f"Task {task_id} - Audio path: {audio_path}, Output dir: {output_dir}, Language: {language}"
+        )
         # Update task manager
         await task_manager.fail_task(task_id, str(e))
 

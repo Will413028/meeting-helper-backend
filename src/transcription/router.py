@@ -477,6 +477,19 @@ async def _download_transcription_files(
             srt_filename = f"{transcription.transcription_title or 'subtitles'}.txt"
             zipf.write(transcription.srt_path, arcname=srt_filename)
 
+            # Add summary file if available
+            if transcription.summary:
+                summary_filename = (
+                    f"{transcription.transcription_title or 'summary'}_summary.txt"
+                )
+                # Create temporary summary file
+                summary_path = os.path.join(temp_dir, summary_filename)
+                with open(summary_path, "w", encoding="utf-8") as f:
+                    f.write(transcription.summary)
+                zipf.write(summary_path, arcname=summary_filename)
+                # Clean up temporary summary file
+                os.remove(summary_path)
+
         # Return the zip file
         return FileResponse(
             path=zip_path,
@@ -495,9 +508,10 @@ async def _download_transcription_files(
         logger.error(
             f"Error creating zip file for transcription {transcription_id}: {e}"
         )
+
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create download archive",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create download archive" + str(e),
         )
 
 
