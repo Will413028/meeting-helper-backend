@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 import re
+import os
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.schemas import DataResponse, PaginatedDataResponse
@@ -260,7 +261,12 @@ async def update_transcription_api(
                     transcription_id=transcription_id,
                     name_changes=speaker_name_changes,
                 )
-
+                # Update SRT file
+                await update_srt_speaker_names(
+                    session=session,
+                    transcription_id=transcription_id,
+                    name_changes=speaker_name_changes,
+                )
         await session.commit()
 
     except Exception as e:
@@ -337,3 +343,108 @@ async def update_summary_speaker_names(
             f"No changes made to summary for transcription {transcription_id}. "
             f"Speaker names might not exist in summary or patterns didn't match."
         )
+
+
+async def update_srt_speaker_names(
+    session: AsyncSession,
+    transcription_id: int,
+    name_changes: list[tuple[str, str]],
+) -> None:
+    """Update multiple speaker names in the SRT file"""
+
+    # Get the transcription
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription or not transcription.srt_path:
+        logger.warning(f"No transcription or SRT path found for ID {transcription_id}")
+        return
+
+    srt_path = transcription.srt_path
+
+    # Check if SRT file exists
+    if not os.path.exists(srt_path):
+        logger.error(f"SRT file not found at path: {srt_path}")
+        return
+
+    try:
+        # Read the SRT file
+        with open(srt_path, "r", encoding="utf-8") as f:
+            srt_content = f.read()
+
+        original_content = srt_content
+        updated_srt = srt_content
+
+        # Apply all name changes
+        for old_name, new_name in name_changes:
+            logger.info(f"Attempting to replace '{old_name}' with '{new_name}' in SRT")
+
+            # Pattern 1: Match exact name with word boundaries (for English/alphanumeric)
+            pattern1 = r"\b" + re.escape(old_name) + r"\b"
+
+            # Pattern 2: Match Chinese format like "講者4" or other CJK characters
+            # This pattern looks for the name followed by common Chinese punctuation or whitespace
+            pattern2 = re.escape(old_name) + r"(?=[\s，。、：；！？）」』]|$)"
+
+            # Pattern 3: Match name preceded by common Chinese punctuation
+            pattern3 = r"(?<=[\s，。、：；！？（「『])" + re.escape(old_name)
+
+            # Try all patterns
+            temp_srt = updated_srt
+
+            # First try pattern 1 (word boundaries)
+            updated_srt = re.sub(pattern1, new_name, updated_srt)
+
+            # Then try pattern 2 (followed by Chinese punctuation)
+            updated_srt = re.sub(pattern2, new_name, updated_srt)
+
+            # Then try pattern 3 (preceded by Chinese punctuation)
+            updated_srt = re.sub(pattern3, new_name, updated_srt)
+
+            if temp_srt != updated_srt:
+                logger.info(
+                    f"Successfully replaced '{old_name}' with '{new_name}' in SRT"
+                )
+            else:
+                logger.warning(f"No matches found for '{old_name}' in SRT file")
+
+        # Only write back if there were actual changes
+        if updated_srt != original_content:
+            # Create backup before modifying
+            backup_path = srt_path + ".backup"
+            with open(backup_path, "w", encoding="utf-8") as f:
+                f.write(original_content)
+
+            # Write updated content
+            with open(srt_path, "w", encoding="utf-8") as f:
+                f.write(updated_srt)
+
+            logger.info(
+                f"Successfully updated SRT file for transcription {transcription_id}. "
+                f"Changes made: {len(name_changes)} speaker name(s)"
+            )
+            logger.info(f"Backup created at: {backup_path}")
+            logger.debug(f"Original SRT snippet: {original_content[:200]}")
+            logger.debug(f"Updated SRT snippet: {updated_srt[:200]}")
+
+            # Update transcription_text in database if needed
+            if transcription.transcription_text:
+                update_query = (
+                    update(Transcription)
+                    .where(Transcription.transcription_id == transcription_id)
+                    .values(transcription_text=updated_srt)
+                )
+                await session.execute(update_query)
+        else:
+            logger.warning(
+                f"No changes made to SRT file for transcription {transcription_id}. "
+                f"Speaker names might not exist in SRT file or patterns didn't match."
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error updating SRT file for transcription {transcription_id}: {e}"
+        )
+        raise e
