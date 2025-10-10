@@ -79,9 +79,7 @@ class Speaker(Base):
         ForeignKey("transcriptions.transcription_id", ondelete="CASCADE")
     )
     speaker_identifier: Mapped[str] = mapped_column(String(50))  # e.g., "SPEAKER_00"
-    display_name: Mapped[str] = mapped_column(
-        String(100)
-    )  # e.g., "講者1" or custom name
+    display_name: Mapped[str] = mapped_column(String(100))
     color: Mapped[str] = mapped_column(String(7))  # hex color for UI
     order_index: Mapped[int] = mapped_column(Integer)  # for ordering speakers
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
