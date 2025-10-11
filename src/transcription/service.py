@@ -5,7 +5,7 @@ import os
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.schemas import DataResponse, PaginatedDataResponse
-from src.models import Transcription, Speaker, TranscriptSegment
+from src.models import Transcription, Speaker, TranscriptSegment, User
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     CreateTranscriptionParams,
@@ -20,6 +20,7 @@ async def create_transcription(
 ):
     try:
         insert_query = insert(Transcription).values(
+            group_id=transcription_data.group_id,
             task_id=transcription_data.task_id,
             transcription_title=transcription_data.transcription_title,
             filename=transcription_data.filename,
@@ -117,6 +118,7 @@ async def get_transcription_by_transcription_id(
 
 
 async def get_transcriptions(
+    user: User,
     session: AsyncSession,
     name: Optional[str] = None,
     page: int = 1,
@@ -136,6 +138,10 @@ async def get_transcriptions(
 
     if name:
         query = query.filter(Transcription.transcription_title.like(f"%{name}%"))
+
+    # 如果不是 group_id == 1（admin）,加上 group_id 過濾
+    if user.group_id != 1:
+        query = query.where(Transcription.group_id == user.group_id)
 
     total_count = (
         await session.execute(select(func.count()).select_from(query.subquery()))
