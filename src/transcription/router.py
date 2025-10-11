@@ -24,10 +24,10 @@ from fastapi.responses import FileResponse
 from pydub import AudioSegment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from src.auth.dependencies import get_current_user
 from src.database import get_db_session
 from src.logger import logger
-from src.models import Transcription
+from src.models import Transcription, User
 from src.task_manager import task_manager
 from src.config import settings
 from src.transcription.service import (
@@ -61,6 +61,7 @@ router = APIRouter(tags=["transcription"])
 
 @router.post("/v1/transcribe")
 async def _transcribe_audio(
+    current_user: Annotated[User, Depends(get_current_user)],
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = "zh",
@@ -145,6 +146,7 @@ async def _transcribe_audio(
     await create_transcription(
         session=session,
         transcription_data=CreateTranscriptionParams(
+            group_id=current_user.group_id,
             task_id=task_id,
             transcription_title=transcription_title,
             filename=file.filename,
@@ -274,11 +276,13 @@ async def _cancel_task(task_id: str):
     "/v1/transcriptions", response_model=PaginatedDataResponse[GetTranscriptionResponse]
 )
 async def _get_transcriptions(
+    current_user: Annotated[User, Depends(get_current_user)],
     query_params: Annotated[GetTranscriptionsParams, Query()],
     session: AsyncSession = Depends(get_db_session),
 ):
     try:
         return await get_transcriptions(
+            user=current_user,
             session=session,
             name=query_params.name,
             page=query_params.page,

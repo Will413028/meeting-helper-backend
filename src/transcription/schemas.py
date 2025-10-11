@@ -43,6 +43,7 @@ class GetTranscriptionResponse(BaseModel):
 
 
 class CreateTranscriptionParams(BaseModel):
+    group_id: int
     task_id: str
     transcription_title: str
     filename: str
@@ -57,6 +58,7 @@ class CreateTranscriptionParams(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
+                    "group_id": 1,
                     "task_id": "task_id",
                     "transcription_title": "My Transcription",
                     "filename": "filename",

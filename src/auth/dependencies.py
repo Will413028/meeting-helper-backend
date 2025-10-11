@@ -12,6 +12,7 @@ from src.database import get_db_session
 from src.models import User
 
 from jwt.exceptions import InvalidTokenError
+from src.logger import logger
 
 
 async def get_current_user(
@@ -24,6 +25,7 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
+        logger.info(token)
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
@@ -40,15 +42,19 @@ async def get_current_user(
         return user
 
     except jwt.ExpiredSignatureError as exc:
+        logger.info("Token has expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
         ) from exc
     except InvalidTokenError as exc:
+        logger.info("Invalid token")
         raise credentials_exception from exc
     except HTTPException as exc:
+        logger.exception(exc)
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except Exception as exc:
+        logger.exception(exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
