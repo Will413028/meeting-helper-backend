@@ -224,7 +224,7 @@ async def process_audio(
                 if await check_ollama_availability():
                     # Generate summary
                     logger.info(f"Generating summary for task {task_id}")
-                    summary = await generate_summary(transcription_text)
+                    summary = await generate_summary(transcription_text, language)
                     if summary:
                         logger.info(
                             f"Successfully generated summary for task {task_id}"

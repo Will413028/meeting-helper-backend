@@ -56,3 +56,18 @@ migration:
 generate_migration:
 	@read -p "Enter migration name: " migration_name; \
 	uv run alembic revision --autogenerate -m "$${migration_name}"
+
+.PHONY: kill-port 
+kill-port:
+	@if [ -z "$(PORT)" ]; then \
+		echo "❌ 請用 make kill-port PORT=8701 指定埠號"; \
+		exit 1; \
+	fi; \
+	echo "🔍 檢查 port $(PORT) 是否被佔用..."; \
+	if lsof -i :$(PORT) >/dev/null 2>&1; then \
+		echo "⚠️  Port $(PORT) 已被佔用，正在關閉程序..."; \
+		lsof -ti :$(PORT) | xargs kill -9 || true; \
+		echo "✅ Port $(PORT) 已釋放。"; \
+	else \
+		echo "✅ Port $(PORT) 沒有被佔用。"; \
+	fi
