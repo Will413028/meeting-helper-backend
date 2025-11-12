@@ -30,16 +30,17 @@ def get_connector():
 
 async def generate_summary(
     transcription_text: str,
-    model: str = "llama3.2:latest",  # Changed to llama3.2 for consistency
-    # ollama_api_url: str = "http://localhost:11435/api/generate",
+    language: str = "zh",
+    model: str = "llama3.2:latest",
     ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
-    max_tokens: int = 1500,  # Increased to ensure longer summaries
+    max_tokens: int = 1500,
 ) -> Optional[str]:
     """
     Generate a summary of the transcription using Ollama API
 
     Args:
         transcription_text: The full transcription text to summarize
+        language: Language for the summary (default: "zh" for Chinese, "en" for English)
         model: The Ollama model to use (default: llama3.2:latest)
         ollama_api_url: The Ollama API endpoint
         max_tokens: Maximum tokens for the summary
@@ -48,13 +49,17 @@ async def generate_summary(
         The generated summary or None if failed
     """
 
-    # Prepare the prompt for summary generation with detailed requirements
-    prompt = f"""請為以下會議記錄生成一個詳細的摘要。
+    # 根據語言選擇不同的 prompt 模板
+    prompts = {
+        "zh": f"""請為以下會議記錄生成一個詳細的摘要。
+
+**重要：請使用繁體中文輸出，不要使用簡體中文。**
 
 要求：
 1. 摘要必須至少500字以上
 2. 使用條列式重點整理
-3. 包含以下部分：
+3. 使用繁體中文撰寫所有內容
+4. 包含以下部分：
    - 會議主題與目的
    - 主要討論事項（使用編號條列）
    - 重要決議與結論（使用編號條列）
@@ -66,7 +71,29 @@ async def generate_summary(
 會議記錄：
 {transcription_text}
 
-詳細摘要："""
+詳細摘要（請使用繁體中文）：""",
+        "en": f"""Please generate a detailed summary of the following meeting transcript.
+
+Requirements:
+1. The summary must be at least 500 words
+2. Use bullet points for key information
+3. Include the following sections:
+   - Meeting topic and purpose
+   - Main discussion points (numbered list)
+   - Important decisions and conclusions (numbered list)
+   - Action items and follow-ups (if any)
+   - Other important information
+
+Ensure the summary is comprehensive, well-structured, and covers all important discussion points.
+
+Meeting transcript:
+{transcription_text}
+
+Detailed summary:""",
+    }
+
+    # 獲取對應語言的 prompt，如果語言不支援則使用中文
+    prompt = prompts.get(language.lower(), prompts["zh"])
 
     # Prepare the request payload
     payload = {
@@ -101,18 +128,21 @@ async def generate_summary(
                                 logger.warning(
                                     f"Generated summary is too short ({len(summary)} characters), regenerating..."
                                 )
-                                # Try again with a more explicit prompt
-                                enhanced_prompt = (
-                                    prompt
-                                    + "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。"
+                                # 根據語言準備增強的提示詞
+                                length_reminder = {
+                                    "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文。",
+                                    "en": "\n\nPlease note: The summary must be at least 500 words. Please provide more detailed content.",
+                                }
+                                enhanced_prompt = prompt + length_reminder.get(
+                                    language.lower(), length_reminder["zh"]
                                 )
+
                                 enhanced_payload = {
                                     "model": model,
                                     "prompt": enhanced_prompt,
                                     "stream": False,
                                     "options": {
-                                        "num_predict": max_tokens
-                                        * 2,  # Double the tokens for retry
+                                        "num_predict": max_tokens * 2,
                                         "temperature": 0.7,
                                     },
                                 }
@@ -149,7 +179,7 @@ async def generate_summary(
                     f"Network error on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
                 )
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
                 continue
             else:
                 logger.error(f"Network error after {max_retries} attempts: {e}")
@@ -164,7 +194,7 @@ async def generate_summary(
                     f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
                 )
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
                 continue
             else:
                 logger.error(

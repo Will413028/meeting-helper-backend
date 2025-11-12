@@ -19,6 +19,7 @@ from fastapi import (
     BackgroundTasks,
     Header,
     Response,
+    Form,
 )
 from fastapi.responses import FileResponse
 from pydub import AudioSegment
@@ -64,9 +65,11 @@ async def _transcribe_audio(
     current_user: Annotated[User, Depends(get_current_user)],
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    language: str = "zh",
+    # language: str = "zh",
+    language: str = Form(default="zh"),
     session: AsyncSession = Depends(get_db_session),
 ):
+    logger.info(f"language: {language}")
     """
     Upload an audio file and start async transcription with progress tracking
 
