@@ -149,6 +149,7 @@ async def _transcribe_audio(
     await create_transcription(
         session=session,
         transcription_data=CreateTranscriptionParams(
+            user_id=current_user.user_id,
             group_id=current_user.group_id,
             task_id=task_id,
             transcription_title=transcription_title,
