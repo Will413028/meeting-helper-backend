@@ -58,6 +58,7 @@ class Transcription(Base):
     transcription_text: Mapped[str] = mapped_column(TEXT, nullable=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.group_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), nullable=True)
 
 
 class Setting(Base):
