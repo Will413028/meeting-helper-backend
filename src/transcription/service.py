@@ -4,6 +4,7 @@ import re
 import os
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.constants import Role
 from src.schemas import DataResponse, PaginatedDataResponse
 from src.models import Transcription, Speaker, TranscriptSegment, User
 from src.transcription.schemas import (
@@ -20,6 +21,7 @@ async def create_transcription(
 ):
     try:
         insert_query = insert(Transcription).values(
+            user_id=transcription_data.user_id,
             group_id=transcription_data.group_id,
             task_id=transcription_data.task_id,
             transcription_title=transcription_data.transcription_title,
@@ -139,8 +141,22 @@ async def get_transcriptions(
     if name:
         query = query.filter(Transcription.transcription_title.like(f"%{name}%"))
 
+    # TODO: 修改不要用 hardcode
     # 如果不是 group_id == 1（admin）,加上 group_id 過濾
     if user.group_id != 1:
+        query = query.where(Transcription.group_id == user.group_id)
+
+    # 根據使用者角色過濾資料
+    if user.role == Role.SUPER_ADMIN:
+        # Super Admin 可以看到所有資料，不需要額外過濾
+        pass
+    elif user.role == Role.ADMIN:
+        # Admin 可以看到自己組別和一般使用者的資料，但不能看到 Super Admin 的資料
+        query = query.join(User, Transcription.user_id == User.user_id).where(
+            User.role != Role.SUPER_ADMIN
+        )
+    else:  # UserRole.USER
+        # 一般使用者只能看到自己組別內的資料
         query = query.where(Transcription.group_id == user.group_id)
 
     total_count = (

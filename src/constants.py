@@ -7,6 +7,7 @@ TAIWAN_TZ = ZoneInfo("Asia/Taipei")
 
 
 class Role(Enum):
+    SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
     USER = "user"
 

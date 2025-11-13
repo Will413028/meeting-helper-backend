@@ -101,7 +101,10 @@ async def get_current_user_id(
 
 
 async def get_admin_user(current_user: Annotated[User, Depends(get_current_user)]):
-    if current_user.role != Role.ADMIN.value:
+    if (
+        current_user.role != Role.ADMIN.value
+        or current_user.role != Role.SUPER_ADMIN.value
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have the permission to access this resource",
