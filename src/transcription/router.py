@@ -65,7 +65,6 @@ async def _transcribe_audio(
     current_user: Annotated[User, Depends(get_current_user)],
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    # language: str = "zh",
     language: str = Form(default="zh"),
     session: AsyncSession = Depends(get_db_session),
 ):
