@@ -28,7 +28,7 @@ class Group(Base):
 
     group_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(50))
-    role: Mapped[str] = mapped_column(String(10), server_default=str(Role.USER.value))
+    role: Mapped[str] = mapped_column(String(15), server_default=str(Role.USER.value))
     is_uncategorized: Mapped[bool] = mapped_column(  # cspell:ignore uncategorized
         server_default=false()
     )
