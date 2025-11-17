@@ -114,7 +114,7 @@ async def update_user(
     session: AsyncSession, user_id: int, user_data: UpdateUserRequest
 ):
     try:
-        hashed_password = await get_password_hash(password=user_data.password)
+        user_data.password = await get_password_hash(password=user_data.password)
 
         update_query = (
             update(User)
@@ -123,7 +123,7 @@ async def update_user(
                 {
                     "name": user_data.name,
                     "account": user_data.account,
-                    "password": hashed_password,
+                    "password": user_data.password,
                     "group_id": user_data.group_id,
                 }
             )
