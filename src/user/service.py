@@ -10,6 +10,7 @@ from src.user.schemas import (
     GetListUserResponse,
 )
 from src.models import User, Group
+from src.auth.utils import get_password_hash
 
 
 async def get_users(
@@ -113,6 +114,8 @@ async def update_user(
     session: AsyncSession, user_id: int, user_data: UpdateUserRequest
 ):
     try:
+        hashed_password = await get_password_hash(password=user_data.password)
+
         update_query = (
             update(User)
             .where(User.user_id == user_id)
@@ -120,7 +123,7 @@ async def update_user(
                 {
                     "name": user_data.name,
                     "account": user_data.account,
-                    "password": user_data.password,
+                    "password": hashed_password,
                     "group_id": user_data.group_id,
                 }
             )
