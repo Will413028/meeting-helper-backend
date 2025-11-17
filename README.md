@@ -67,6 +67,9 @@ uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8701
 # Run the setup script
 ./setup-https.sh
 
+# Run the server in HTTPS mode
+./run-nohup.sh start --prod --https
+
 # Or manually:
 # 1. Generate self-signed certificate
 make generate-cert
