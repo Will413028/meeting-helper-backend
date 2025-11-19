@@ -40,6 +40,7 @@ from src.transcription.service import (
     update_transcription_api,
     update_transcription,
 )
+from src.group.service import get_super_admin_group_id
 from src.transcription.ollama_service import generate_summary, check_ollama_availability
 from src.transcription.srt_utils import extract_text_from_srt
 from src.transcription.schemas import (
@@ -56,6 +57,7 @@ from src.transcription.audio_utils import get_audio_duration
 from src.schemas import PaginatedDataResponse, DataResponse, DetailResponse
 from src.transcription.background_processor import queue_audio_processing
 from src.database import AsyncSessionLocal
+from src.constants import Role
 
 router = APIRouter(tags=["transcription"])
 
@@ -68,14 +70,22 @@ async def _transcribe_audio(
     language: str = Form(default="zh"),
     session: AsyncSession = Depends(get_db_session),
 ):
-    logger.info(f"language: {language}")
     """
     Upload an audio file and start async transcription with progress tracking
 
     Returns task_id to track progress
     """
     # Validate file extension
-    allowed_extensions = [".mp3", ".wav", ".mp4", ".m4a", ".flac", ".ogg", ".webm"]
+    allowed_extensions = [
+        ".mp3",
+        ".wav",
+        ".mp4",
+        ".m4a",
+        ".flac",
+        ".ogg",
+        ".webm",
+        ".mov",
+    ]
     file_extension = Path(file.filename).suffix.lower()
     if file_extension not in allowed_extensions:
         raise HTTPException(
@@ -84,7 +94,9 @@ async def _transcribe_audio(
         )
 
     # Create task
-    task_id = task_manager.create_task(file.filename)
+    task_id = task_manager.create_task(
+        filename=file.filename, group_id=current_user.group_id
+    )
 
     # Save uploaded file to a temporary location first
     temp_file = None
@@ -196,11 +208,39 @@ async def _get_task_status(task_id: str):
 
 
 @router.get("/v1/tasks")
-async def _list_tasks():
-    """List all transcription tasks"""
-    tasks = [task.to_dict() for task in task_manager.tasks.values()]
+async def _list_tasks(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: AsyncSession = Depends(get_db_session),
+):
+    """List transcription tasks based on user role permissions"""
 
-    tasks = [task for task in tasks if task["status"] in ["processing", "pending"]]
+    # Filter tasks based on user role
+    if current_user.role == Role.SUPER_ADMIN.value:
+        # Super admin can see all tasks
+        tasks = [task.to_dict() for task in task_manager.tasks.values()]
+
+    elif current_user.role == Role.ADMIN.value:
+        # Admin can see all tasks except super_admin's tasks
+        super_admin_group_id = await get_super_admin_group_id(session)
+
+        tasks = [
+            task.to_dict()
+            for task in task_manager.tasks.values()
+            if task.group_id != super_admin_group_id
+        ]
+
+    else:  # Regular user
+        # Users can only see tasks from their own group
+        tasks = [
+            task.to_dict()
+            for task in task_manager.tasks.values()
+            if task.group_id == current_user.group_id
+        ]
+
+    # Filter by status for all roles
+    tasks = [
+        task for task in tasks if task["status"] in ["processing", "pending", "queued"]
+    ]
 
     return {"count": len(tasks), "tasks": tasks}
 

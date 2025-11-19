@@ -28,154 +28,6 @@ def get_connector():
     return _connector
 
 
-async def clean_summary_with_llm(
-    summary: str,
-    language: str = "zh",
-    model: str = "llama3.2:latest",
-    ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
-) -> str:
-    """
-    使用 LLM 清理摘要輸出，移除不需要的提醒、免責聲明等內容
-
-    Args:
-        summary: 原始摘要文本
-        language: 語言代碼
-        model: 使用的模型
-        ollama_api_url: Ollama API URL
-
-    Returns:
-        清理後的摘要文本
-    """
-    cleaning_prompts = {
-        "zh": f"""請清理以下摘要，移除所有不必要的內容：
-
-**要移除的內容：**
-1. 重要提醒、注意事項、免責聲明等區塊
-2. "本摘要僅供參考"、"如需更多資訊請參考原文" 等說明
-3. 任何關於摘要本身的說明文字
-4. 多餘的空行
-
-**要保留的內容：**
-1. 會議主題與目的
-2. 主要討論事項
-3. 重要決議與結論
-4. 待辦事項與後續行動
-5. 其他重要資訊
-
-**原始摘要：**
-{summary}
-
-**請直接輸出清理後的摘要，不要添加任何說明：**""",
-        "en": f"""Please clean the following summary by removing all unnecessary content:
-
-**Content to Remove:**
-1. Important reminders, notes, disclaimers sections
-2. Phrases like "This summary is for reference only", "For more details refer to the original"
-3. Any explanatory text about the summary itself
-4. Excessive blank lines
-
-**Content to Keep:**
-1. Meeting Topic and Purpose
-2. Main Discussion Points
-3. Important Decisions and Conclusions
-4. Action Items and Follow-ups
-5. Other Important Information
-
-**Original Summary:**
-{summary}
-
-**Please output the cleaned summary directly without any additional notes:**""",
-    }
-
-    prompt = cleaning_prompts.get(language, cleaning_prompts["zh"])
-
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "num_predict": 2000,
-            "temperature": 0.1,  # 非常低的溫度，確保精確執行
-            "top_p": 0.9,
-        },
-    }
-
-    try:
-        async with aiohttp.ClientSession(connector=get_connector()) as session:
-            async with session.post(
-                ollama_api_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=OLLAMA_GENERATE_TIMEOUT),
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    cleaned_summary = result.get("response", "").strip()
-
-                    if cleaned_summary and len(cleaned_summary) > 200:
-                        logger.info("Successfully cleaned summary with LLM")
-                        return cleaned_summary
-                    else:
-                        logger.warning(
-                            "LLM cleaning returned short/empty result, using original"
-                        )
-                        return summary
-                else:
-                    logger.warning(
-                        f"LLM cleaning failed with status {response.status}, using original"
-                    )
-                    return summary
-    except Exception as e:
-        logger.warning(f"Error during LLM cleaning: {e}, using original summary")
-        return summary
-
-
-def validate_summary_quality(summary: str, language: str = "zh") -> tuple[bool, str]:
-    """
-    驗證摘要質量
-
-    Args:
-        summary: 摘要文本
-        language: 語言代碼
-
-    Returns:
-        (is_valid, reason) - 是否有效和原因
-    """
-    # 檢查最小長度
-    if len(summary) < 300:
-        return False, f"摘要過短 ({len(summary)} 字元)"
-
-    # 檢查是否包含必要的區段標題
-    required_sections = {
-        "zh": ["會議主題", "討論事項", "決議", "結論"],
-        "en": ["Meeting Topic", "Discussion", "Decision", "Conclusion"],
-    }
-
-    sections = required_sections.get(language, required_sections["zh"])
-    found_sections = sum(1 for section in sections if section in summary)
-
-    if found_sections < 2:
-        return False, f"缺少必要區段 (找到 {found_sections}/{len(sections)})"
-
-    # 檢查是否只是重複對話（檢查 "講者" 出現頻率）
-    speaker_count = summary.count("講者")
-    if speaker_count > 15:  # 如果 "講者" 出現超過15次，可能是複製對話
-        return False, f"摘要包含過多對話片段 (講者出現 {speaker_count} 次)"
-
-    # 檢查是否有重複內容
-    lines = [
-        line.strip()
-        for line in summary.split("\n")
-        if line.strip() and len(line.strip()) > 10
-    ]
-    if len(lines) > 10:
-        unique_lines = set(lines)
-        repetition_ratio = len(unique_lines) / len(lines)
-        if repetition_ratio < 0.7:
-            return False, f"摘要包含大量重複內容 (唯一性比例: {repetition_ratio:.2f})"
-
-    return True, "驗證通過"
-
-
 async def generate_summary(
     transcription_text: str,
     language: str = "zh",
@@ -236,7 +88,7 @@ async def generate_summary(
 **會議逐字稿：**
 {transcription_text}
 
-**請嚴格按照上述格式生成摘要，摘要結束後立即停止，不要添加任何提醒或說明：**""",
+**嚴格按照上述格式生成摘要**""",
         "en": f"""You are a professional meeting summary assistant. Generate a structured summary based on the following meeting transcript.
 
 **Important Rules:**
@@ -286,18 +138,9 @@ async def generate_summary(
         "stream": False,
         "options": {
             "num_predict": max_tokens,
-            "temperature": 0.3,  # 降低溫度以獲得更確定的輸出
+            "temperature": 0.3,
             "top_p": 0.9,
-            "repeat_penalty": 1.2,  # 增加重複懲罰
-            "stop": [
-                "**重要提醒",
-                "重要提醒：",
-                "**注意事項",
-                "注意事項：",
-                "**免責聲明",
-                "本摘要僅供參考",
-                "如需更多",
-            ],  # 添加停止詞
+            "repeat_penalty": 1.2,
         },
     }
 
@@ -318,82 +161,15 @@ async def generate_summary(
                         summary = result.get("response", "").strip()
 
                         if summary:
-                            # 驗證摘要質量
-                            is_valid, validation_msg = validate_summary_quality(
-                                summary, language
-                            )
-
-                            if not is_valid:
-                                logger.warning(f"生成的摘要質量不佳: {validation_msg}")
-
-                                # 如果質量不好且這是第一次嘗試，使用更嚴格的提示重試
-                                if attempt == 0:
-                                    logger.info("使用更嚴格的提示重新生成...")
-
-                                    strict_reminder = {
-                                        "zh": f"\n\n**警告：上一次生成的摘要不符合要求（{validation_msg}）**\n請務必：\n1. 不要複製對話內容\n2. 要歸納總結關鍵信息\n3. 使用結構化的條列式格式\n4. 包含所有必要區段\n5. 不要添加任何提醒或說明",
-                                        "en": f"\n\n**Warning: The previous summary did not meet requirements ({validation_msg})**\nPlease ensure:\n1. Do not copy dialogue content\n2. Summarize and synthesize key information\n3. Use structured bullet point format\n4. Include all required sections\n5. Do not add any reminders or notes",
-                                    }
-
-                                    enhanced_prompt = prompt + strict_reminder.get(
-                                        language.lower(), strict_reminder["zh"]
-                                    )
-
-                                    enhanced_payload = {
-                                        "model": model,
-                                        "prompt": enhanced_prompt,
-                                        "stream": False,
-                                        "options": {
-                                            "num_predict": max_tokens * 2,
-                                            "temperature": 0.2,  # 更低的溫度
-                                            "top_p": 0.85,
-                                            "repeat_penalty": 1.3,
-                                            "stop": payload["options"]["stop"],
-                                        },
-                                    }
-
-                                    async with session.post(
-                                        ollama_api_url,
-                                        json=enhanced_payload,
-                                        timeout=aiohttp.ClientTimeout(
-                                            total=OLLAMA_GENERATE_TIMEOUT
-                                        ),
-                                    ) as retry_response:
-                                        if retry_response.status == 200:
-                                            retry_result = await retry_response.json()
-                                            summary = retry_result.get(
-                                                "response", ""
-                                            ).strip()
-
-                                            # 再次驗證
-                                            is_valid, validation_msg = (
-                                                validate_summary_quality(
-                                                    summary, language
-                                                )
-                                            )
-                                            if is_valid:
-                                                logger.info(
-                                                    f"重新生成成功，摘要長度：{len(summary)} 字元"
-                                                )
-                                            else:
-                                                logger.warning(
-                                                    f"重新生成的摘要仍不理想：{validation_msg}"
-                                                )
-
-                            # 使用 LLM 清理摘要（移除不需要的提醒和免責聲明）
-                            summary = await clean_summary_with_llm(
-                                summary, language, model, ollama_api_url
-                            )
-
                             # Check if summary meets minimum length requirement
-                            if len(summary) < 500:
+                            if len(summary) < 100:
                                 logger.warning(
                                     f"Generated summary is too short ({len(summary)} characters), regenerating..."
                                 )
                                 # 根據語言準備增強的提示詞
                                 length_reminder = {
                                     "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文，不要添加任何提醒。",
-                                    "en": "\n\nPlease note: The summary must be at least 500 words. Please provide more detailed content. Do not add any reminders.",
+                                    "en": "\n\nPlease note: The summary must be at least 100 words. Please provide more detailed content. Do not add any reminders.",
                                 }
                                 enhanced_prompt = prompt + length_reminder.get(
                                     language.lower(), length_reminder["zh"]
@@ -423,10 +199,6 @@ async def generate_summary(
                                         summary = retry_result.get(
                                             "response", ""
                                         ).strip()
-                                        # 清理重新生成的摘要
-                                        summary = await clean_summary_with_llm(
-                                            summary, language, model, ollama_api_url
-                                        )
 
                             logger.info(
                                 f"Successfully generated summary with {len(summary)} characters"

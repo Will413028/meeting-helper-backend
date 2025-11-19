@@ -193,3 +193,15 @@ async def get_simple_groups(
     return ListDataResponse[GetSimpleGroupResponse](
         data=results,
     )
+
+
+async def get_super_admin_group_id(
+    session: AsyncSession,
+) -> int:
+    query = select(
+        Group.group_id,
+    ).where(Group.role == Role.SUPER_ADMIN.value)
+
+    result = (await session.execute(query)).mappings().one()
+
+    return result

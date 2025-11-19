@@ -15,8 +15,9 @@ class TaskStatus(Enum):
 
 
 class TranscriptionTask:
-    def __init__(self, task_id: str, filename: str):
+    def __init__(self, task_id: str, filename: str, group_id: int):
         self.task_id = task_id
+        self.group_id = group_id
         self.filename = filename
         self.status = TaskStatus.PENDING
         self.progress = 0
@@ -71,9 +72,9 @@ class TaskManager:
         self.current_processing_task: Optional[str] = None  # Currently processing task
         self._queue_lock = asyncio.Lock()
 
-    def create_task(self, filename: str) -> str:
+    def create_task(self, filename: str, group_id: int) -> str:
         task_id = str(uuid.uuid4())
-        self.tasks[task_id] = TranscriptionTask(task_id, filename)
+        self.tasks[task_id] = TranscriptionTask(task_id, filename, group_id)
         return task_id
 
     def get_task(self, task_id: str) -> Optional[TranscriptionTask]:
