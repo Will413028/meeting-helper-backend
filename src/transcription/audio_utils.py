@@ -37,7 +37,7 @@ def get_audio_duration(file_path: str) -> Optional[int]:
             if ext == ".mp3":
                 audio = MP3(file_path)
                 duration = int(audio.info.length)
-            elif ext in [".mp4", ".m4a"]:
+            elif ext in [".mp4", ".m4a", ".mov"]:
                 audio = MP4(file_path)
                 duration = int(audio.info.length)
             elif ext == ".flac":

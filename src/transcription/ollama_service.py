@@ -8,8 +8,8 @@ import re
 from collections import Counter
 
 # Configuration
-OLLAMA_GENERATE_TIMEOUT = 900  # 15 minutes for generation
-OLLAMA_CHECK_TIMEOUT = 10  # 10 seconds for availability check
+OLLAMA_GENERATE_TIMEOUT = 1200  # 20 minutes for generation
+OLLAMA_CHECK_TIMEOUT = 30  # 30 seconds for availability check
 
 # Create a shared connector with connection pooling
 _connector = None
@@ -26,6 +26,154 @@ def get_connector():
             enable_cleanup_closed=True,
         )
     return _connector
+
+
+async def clean_summary_with_llm(
+    summary: str,
+    language: str = "zh",
+    model: str = "llama3.2:latest",
+    ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
+) -> str:
+    """
+    使用 LLM 清理摘要輸出，移除不需要的提醒、免責聲明等內容
+
+    Args:
+        summary: 原始摘要文本
+        language: 語言代碼
+        model: 使用的模型
+        ollama_api_url: Ollama API URL
+
+    Returns:
+        清理後的摘要文本
+    """
+    cleaning_prompts = {
+        "zh": f"""請清理以下摘要，移除所有不必要的內容：
+
+**要移除的內容：**
+1. 重要提醒、注意事項、免責聲明等區塊
+2. "本摘要僅供參考"、"如需更多資訊請參考原文" 等說明
+3. 任何關於摘要本身的說明文字
+4. 多餘的空行
+
+**要保留的內容：**
+1. 會議主題與目的
+2. 主要討論事項
+3. 重要決議與結論
+4. 待辦事項與後續行動
+5. 其他重要資訊
+
+**原始摘要：**
+{summary}
+
+**請直接輸出清理後的摘要，不要添加任何說明：**""",
+        "en": f"""Please clean the following summary by removing all unnecessary content:
+
+**Content to Remove:**
+1. Important reminders, notes, disclaimers sections
+2. Phrases like "This summary is for reference only", "For more details refer to the original"
+3. Any explanatory text about the summary itself
+4. Excessive blank lines
+
+**Content to Keep:**
+1. Meeting Topic and Purpose
+2. Main Discussion Points
+3. Important Decisions and Conclusions
+4. Action Items and Follow-ups
+5. Other Important Information
+
+**Original Summary:**
+{summary}
+
+**Please output the cleaned summary directly without any additional notes:**""",
+    }
+
+    prompt = cleaning_prompts.get(language, cleaning_prompts["zh"])
+
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "num_predict": 2000,
+            "temperature": 0.1,  # 非常低的溫度，確保精確執行
+            "top_p": 0.9,
+        },
+    }
+
+    try:
+        async with aiohttp.ClientSession(connector=get_connector()) as session:
+            async with session.post(
+                ollama_api_url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=OLLAMA_GENERATE_TIMEOUT),
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    cleaned_summary = result.get("response", "").strip()
+
+                    if cleaned_summary and len(cleaned_summary) > 200:
+                        logger.info("Successfully cleaned summary with LLM")
+                        return cleaned_summary
+                    else:
+                        logger.warning(
+                            "LLM cleaning returned short/empty result, using original"
+                        )
+                        return summary
+                else:
+                    logger.warning(
+                        f"LLM cleaning failed with status {response.status}, using original"
+                    )
+                    return summary
+    except Exception as e:
+        logger.warning(f"Error during LLM cleaning: {e}, using original summary")
+        return summary
+
+
+def validate_summary_quality(summary: str, language: str = "zh") -> tuple[bool, str]:
+    """
+    驗證摘要質量
+
+    Args:
+        summary: 摘要文本
+        language: 語言代碼
+
+    Returns:
+        (is_valid, reason) - 是否有效和原因
+    """
+    # 檢查最小長度
+    if len(summary) < 300:
+        return False, f"摘要過短 ({len(summary)} 字元)"
+
+    # 檢查是否包含必要的區段標題
+    required_sections = {
+        "zh": ["會議主題", "討論事項", "決議", "結論"],
+        "en": ["Meeting Topic", "Discussion", "Decision", "Conclusion"],
+    }
+
+    sections = required_sections.get(language, required_sections["zh"])
+    found_sections = sum(1 for section in sections if section in summary)
+
+    if found_sections < 2:
+        return False, f"缺少必要區段 (找到 {found_sections}/{len(sections)})"
+
+    # 檢查是否只是重複對話（檢查 "講者" 出現頻率）
+    speaker_count = summary.count("講者")
+    if speaker_count > 15:  # 如果 "講者" 出現超過15次，可能是複製對話
+        return False, f"摘要包含過多對話片段 (講者出現 {speaker_count} 次)"
+
+    # 檢查是否有重複內容
+    lines = [
+        line.strip()
+        for line in summary.split("\n")
+        if line.strip() and len(line.strip()) > 10
+    ]
+    if len(lines) > 10:
+        unique_lines = set(lines)
+        repetition_ratio = len(unique_lines) / len(lines)
+        if repetition_ratio < 0.7:
+            return False, f"摘要包含大量重複內容 (唯一性比例: {repetition_ratio:.2f})"
+
+    return True, "驗證通過"
 
 
 async def generate_summary(
@@ -51,48 +199,84 @@ async def generate_summary(
 
     # 根據語言選擇不同的 prompt 模板
     prompts = {
-        "zh": f"""請為以下會議記錄生成一個詳細的摘要。
+        "zh": f"""你是一個專業的會議記錄摘要助手。請根據以下會議逐字稿生成一個結構化的摘要。
 
-**重要：請使用繁體中文輸出，不要使用簡體中文。**
+**重要規則：**
+1. 使用繁體中文輸出
+2. 摘要必須至少 500 字
+3. 不要重複逐字稿的對話內容，要歸納總結
+4. 使用結構化的條列式格式
+5. 不要添加免責聲明、重要提醒、注意事項或任何額外的說明文字
+6. 摘要結束後就停止，不要有任何補充說明
+7. 不要說「本摘要僅供參考」、「如需更多資訊請參考原文」等話語
 
-要求：
-1. 摘要必須至少500字以上
-2. 使用條列式重點整理
-3. 使用繁體中文撰寫所有內容
-4. 包含以下部分：
-   - 會議主題與目的
-   - 主要討論事項（使用編號條列）
-   - 重要決議與結論（使用編號條列）
-   - 待辦事項與後續行動（如果有的話）
-   - 其他重要資訊
+**必須包含的區段：**
 
-請確保摘要內容完整、結構清晰，並涵蓋所有重要討論點。
+## 會議主題與目的
+[用 1-2 段文字說明會議的主要目的和背景]
 
-會議記錄：
+## 主要討論事項
+1. [議題一：用 2-3 句話說明討論內容和重點]
+2. [議題二：用 2-3 句話說明討論內容和重點]
+3. [議題三：用 2-3 句話說明討論內容和重點]
+
+## 重要決議與結論
+1. [決議一：說明具體的決定或結論]
+2. [決議二：說明具體的決定或結論]
+
+## 待辦事項與後續行動
+1. [行動項目一：負責人、截止日期（如有提到）]
+2. [行動項目二：負責人、截止日期（如有提到）]
+
+## 其他重要資訊
+[補充說明任何其他相關的重要信息]
+
+---
+
+**會議逐字稿：**
 {transcription_text}
 
-詳細摘要（請使用繁體中文）：""",
-        "en": f"""Please generate a detailed summary of the following meeting transcript.
+**請嚴格按照上述格式生成摘要，摘要結束後立即停止，不要添加任何提醒或說明：**""",
+        "en": f"""You are a professional meeting summary assistant. Generate a structured summary based on the following meeting transcript.
 
-Requirements:
+**Important Rules:**
 1. The summary must be at least 500 words
-2. Use bullet points for key information
-3. Include the following sections:
-   - Meeting topic and purpose
-   - Main discussion points (numbered list)
-   - Important decisions and conclusions (numbered list)
-   - Action items and follow-ups (if any)
-   - Other important information
+2. Do NOT repeat dialogue content from the transcript - summarize and synthesize
+3. Use structured bullet point format
+4. Do NOT add disclaimers, reminders, notes, or any additional explanatory text
+5. Stop immediately after the summary ends
+6. Do NOT say things like "This summary is for reference only" or "For more details, refer to the original"
 
-Ensure the summary is comprehensive, well-structured, and covers all important discussion points.
+**Required Sections:**
 
-Meeting transcript:
+## Meeting Topic and Purpose
+[1-2 paragraphs explaining the main purpose and background of the meeting]
+
+## Main Discussion Points
+1. [Topic 1: 2-3 sentences explaining the discussion content and key points]
+2. [Topic 2: 2-3 sentences explaining the discussion content and key points]
+3. [Topic 3: 2-3 sentences explaining the discussion content and key points]
+
+## Important Decisions and Conclusions
+1. [Decision 1: Explain the specific decision or conclusion]
+2. [Decision 2: Explain the specific decision or conclusion]
+
+## Action Items and Follow-ups
+1. [Action item 1: Responsible person, deadline (if mentioned)]
+2. [Action item 2: Responsible person, deadline (if mentioned)]
+
+## Other Important Information
+[Supplementary notes on any other relevant important information]
+
+---
+
+**Meeting Transcript:**
 {transcription_text}
 
-Detailed summary:""",
+**Please strictly follow the format above and stop immediately after the summary without any additional notes:**""",
     }
 
-    # 獲取對應語言的 prompt，如果語言不支援則使用中文
+    # 獲取對應語言的 prompt
     prompt = prompts.get(language.lower(), prompts["zh"])
 
     # Prepare the request payload
@@ -102,7 +286,18 @@ Detailed summary:""",
         "stream": False,
         "options": {
             "num_predict": max_tokens,
-            "temperature": 0.7,
+            "temperature": 0.3,  # 降低溫度以獲得更確定的輸出
+            "top_p": 0.9,
+            "repeat_penalty": 1.2,  # 增加重複懲罰
+            "stop": [
+                "**重要提醒",
+                "重要提醒：",
+                "**注意事項",
+                "注意事項：",
+                "**免責聲明",
+                "本摘要僅供參考",
+                "如需更多",
+            ],  # 添加停止詞
         },
     }
 
@@ -123,6 +318,73 @@ Detailed summary:""",
                         summary = result.get("response", "").strip()
 
                         if summary:
+                            # 驗證摘要質量
+                            is_valid, validation_msg = validate_summary_quality(
+                                summary, language
+                            )
+
+                            if not is_valid:
+                                logger.warning(f"生成的摘要質量不佳: {validation_msg}")
+
+                                # 如果質量不好且這是第一次嘗試，使用更嚴格的提示重試
+                                if attempt == 0:
+                                    logger.info("使用更嚴格的提示重新生成...")
+
+                                    strict_reminder = {
+                                        "zh": f"\n\n**警告：上一次生成的摘要不符合要求（{validation_msg}）**\n請務必：\n1. 不要複製對話內容\n2. 要歸納總結關鍵信息\n3. 使用結構化的條列式格式\n4. 包含所有必要區段\n5. 不要添加任何提醒或說明",
+                                        "en": f"\n\n**Warning: The previous summary did not meet requirements ({validation_msg})**\nPlease ensure:\n1. Do not copy dialogue content\n2. Summarize and synthesize key information\n3. Use structured bullet point format\n4. Include all required sections\n5. Do not add any reminders or notes",
+                                    }
+
+                                    enhanced_prompt = prompt + strict_reminder.get(
+                                        language.lower(), strict_reminder["zh"]
+                                    )
+
+                                    enhanced_payload = {
+                                        "model": model,
+                                        "prompt": enhanced_prompt,
+                                        "stream": False,
+                                        "options": {
+                                            "num_predict": max_tokens * 2,
+                                            "temperature": 0.2,  # 更低的溫度
+                                            "top_p": 0.85,
+                                            "repeat_penalty": 1.3,
+                                            "stop": payload["options"]["stop"],
+                                        },
+                                    }
+
+                                    async with session.post(
+                                        ollama_api_url,
+                                        json=enhanced_payload,
+                                        timeout=aiohttp.ClientTimeout(
+                                            total=OLLAMA_GENERATE_TIMEOUT
+                                        ),
+                                    ) as retry_response:
+                                        if retry_response.status == 200:
+                                            retry_result = await retry_response.json()
+                                            summary = retry_result.get(
+                                                "response", ""
+                                            ).strip()
+
+                                            # 再次驗證
+                                            is_valid, validation_msg = (
+                                                validate_summary_quality(
+                                                    summary, language
+                                                )
+                                            )
+                                            if is_valid:
+                                                logger.info(
+                                                    f"重新生成成功，摘要長度：{len(summary)} 字元"
+                                                )
+                                            else:
+                                                logger.warning(
+                                                    f"重新生成的摘要仍不理想：{validation_msg}"
+                                                )
+
+                            # 使用 LLM 清理摘要（移除不需要的提醒和免責聲明）
+                            summary = await clean_summary_with_llm(
+                                summary, language, model, ollama_api_url
+                            )
+
                             # Check if summary meets minimum length requirement
                             if len(summary) < 500:
                                 logger.warning(
@@ -130,8 +392,8 @@ Detailed summary:""",
                                 )
                                 # 根據語言準備增強的提示詞
                                 length_reminder = {
-                                    "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文。",
-                                    "en": "\n\nPlease note: The summary must be at least 500 words. Please provide more detailed content.",
+                                    "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文，不要添加任何提醒。",
+                                    "en": "\n\nPlease note: The summary must be at least 500 words. Please provide more detailed content. Do not add any reminders.",
                                 }
                                 enhanced_prompt = prompt + length_reminder.get(
                                     language.lower(), length_reminder["zh"]
@@ -143,7 +405,10 @@ Detailed summary:""",
                                     "stream": False,
                                     "options": {
                                         "num_predict": max_tokens * 2,
-                                        "temperature": 0.7,
+                                        "temperature": 0.3,
+                                        "top_p": 0.9,
+                                        "repeat_penalty": 1.2,
+                                        "stop": payload["options"]["stop"],
                                     },
                                 }
                                 async with session.post(
@@ -158,6 +423,10 @@ Detailed summary:""",
                                         summary = retry_result.get(
                                             "response", ""
                                         ).strip()
+                                        # 清理重新生成的摘要
+                                        summary = await clean_summary_with_llm(
+                                            summary, language, model, ollama_api_url
+                                        )
 
                             logger.info(
                                 f"Successfully generated summary with {len(summary)} characters"
@@ -215,7 +484,6 @@ Detailed summary:""",
 
 
 async def check_ollama_availability(
-    # ollama_api_url: str = "http://localhost:11435/api/tags",
     ollama_api_url: str = "http://0.0.0.0:11435/api/tags",
 ) -> bool:
     """
@@ -369,8 +637,7 @@ async def _generate_fallback_tags(
 
 async def generate_tags(
     transcription_text: str,
-    model: str = "llama3.2:latest",  # Changed to llama3.2 which might follow instructions better
-    # ollama_api_url: str = "http://localhost:11435/api/generate",
+    model: str = "llama3.2:latest",
     ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
     max_tags: int = 8,
 ) -> Optional[list]:
@@ -413,8 +680,8 @@ async def generate_tags(
         "prompt": prompt,
         "stream": False,
         "options": {
-            "num_predict": 50,  # Further limit tokens for tags
-            "temperature": 0.1,  # Very low temperature for deterministic output
+            "num_predict": 50,
+            "temperature": 0.1,
             "top_p": 0.9,
             "repeat_penalty": 1.1,
         },
@@ -439,23 +706,17 @@ async def generate_tags(
 
                         if tags_text:
                             # Clean up the response - remove any thinking process
-                            # Look for common patterns that indicate thinking
                             if "<think>" in tags_text:
-                                # For deepseek model, extract content after </think>
                                 if "</think>" in tags_text:
                                     tags_text = tags_text.split("</think>")[-1].strip()
                                 else:
                                     tags_text = tags_text.split("<think>")[0].strip()
 
                             # Remove any remaining XML-like tags
-                            import re
-
                             tags_text = re.sub(r"<[^>]+>", "", tags_text).strip()
 
                             # If response contains explanations, try to extract tags
-                            # Look for patterns like "1. tag1 2. tag2" or "tag1, tag2"
                             if "：" in tags_text or ":" in tags_text:
-                                # Extract content after colon
                                 parts = re.split(r"[:：]", tags_text)
                                 if len(parts) > 1:
                                     tags_text = parts[-1].strip()
@@ -482,7 +743,7 @@ async def generate_tags(
                             # Parse tags from the response
                             tags = []
 
-                            # First try comma
+                            # Try different separators
                             potential_tags = tags_text.split(",")
                             if len(potential_tags) == 1 and "，" in tags_text:
                                 potential_tags = tags_text.split("，")
@@ -500,25 +761,22 @@ async def generate_tags(
                                 ):
                                     continue
 
-                                # Count words - for Chinese text, we'll count characters
-                                # For mixed or English text, we'll count space-separated words
+                                # Count words
                                 if any("\u4e00" <= c <= "\u9fff" for c in tag):
-                                    # Contains Chinese characters - count characters
                                     word_count = len(tag)
                                 else:
-                                    # English or other text - count space-separated words
                                     word_count = len(tag.split())
 
-                                # Filter out empty tags, tags with incomplete thoughts, and tags outside 1-5 word range
+                                # Filter tags
                                 if (
                                     tag
                                     and not tag.startswith("<")
                                     and 1 <= word_count <= 5
-                                    and len(tag) <= 20  # Max 20 characters total
+                                    and len(tag) <= 20
                                 ):
                                     tags.append(tag)
 
-                            # Limit to max_tags and ensure at least 1 tag
+                            # Limit to max_tags
                             if tags:
                                 tags = tags[:max_tags]
                                 logger.info(
@@ -529,7 +787,6 @@ async def generate_tags(
                                 logger.error(
                                     f"No valid tags extracted from Ollama response: {tags_text[:200]}"
                                 )
-                                # Try to generate fallback tags from the transcription
                                 return await _generate_fallback_tags(
                                     transcription_text, max_tags
                                 )
@@ -549,7 +806,7 @@ async def generate_tags(
                     f"Network error on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
                 )
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
                 continue
             else:
                 logger.error(f"Network error after {max_retries} attempts: {e}")
@@ -564,7 +821,7 @@ async def generate_tags(
                     f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
                 )
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
                 continue
             else:
                 logger.error(
