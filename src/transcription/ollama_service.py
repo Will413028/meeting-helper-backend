@@ -6,6 +6,7 @@ from typing import Optional
 from src.logger import logger
 import re
 from collections import Counter
+from src.config import settings
 
 # Configuration
 OLLAMA_GENERATE_TIMEOUT = 1200  # 20 minutes for generation
@@ -32,7 +33,7 @@ async def generate_summary(
     transcription_text: str,
     language: str = "zh",
     model: str = "llama3.2:latest",
-    ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
+    ollama_api_url: str = f"{settings.OLLAMA_API_URL}/api/generate",
     max_tokens: int = 1500,
 ) -> Optional[str]:
     """
@@ -256,7 +257,7 @@ async def generate_summary(
 
 
 async def check_ollama_availability(
-    ollama_api_url: str = "http://0.0.0.0:11435/api/tags",
+    ollama_api_url: str = f"{settings.OLLAMA_API_URL}/api/tags",
 ) -> bool:
     """
     Check if Ollama API is available and has models
@@ -410,7 +411,7 @@ async def _generate_fallback_tags(
 async def generate_tags(
     transcription_text: str,
     model: str = "llama3.2:latest",
-    ollama_api_url: str = "http://0.0.0.0:11435/api/generate",
+    ollama_api_url: str = f"{settings.OLLAMA_API_URL}/api/generate",
     max_tags: int = 8,
 ) -> Optional[list]:
     """
