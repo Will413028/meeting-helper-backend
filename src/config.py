@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # DB
     DATABASE_URL: str
 
+    # Ollama
+    OLLAMA_API_URL: str = "http://0.0.0.0:11435"
+
     model_config = SettingsConfigDict(env_file="./env/.env")
 
 
