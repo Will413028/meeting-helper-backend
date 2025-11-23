@@ -52,12 +52,6 @@ async def get_user_by_account(
     return user
 
 
-async def get_user_id_by_account(session: AsyncSession, account: str) -> User:
-    query = select(User.user_id).where(User.account == account)
-
-    return (await session.execute(query)).scalar()
-
-
 async def create_user(
     session: AsyncSession,
     user: CreateUserRequest,
