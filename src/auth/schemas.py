@@ -33,20 +33,6 @@ class Token(BaseModel):
     role: str
 
 
-class UpdatePasswordRequest(BaseModel):
-    phone: str
-    password: str
-    code: str
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {"phone": "886912345678", "password": "password123", "code": "123456"}
-            ]
-        }
-    }
-
-
 class GetUserByAccountResponse(BaseModel):
     user_id: int
     name: str

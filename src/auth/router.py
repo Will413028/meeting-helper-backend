@@ -14,14 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth.schemas import (
     CreateUserRequest,
     Token,
-    UpdatePasswordRequest,
 )
 from src.auth.service import (
     authenticate_user,
     create_access_token,
     create_user,
     get_user_by_account,
-    reset_password,
 )
 from src.config import settings
 from src.database import get_db_session
@@ -59,31 +57,6 @@ async def register(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except Exception as exc:
         logger.error("register error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
-
-
-@router.put(
-    "/v1/password",
-    response_model=DetailResponse,
-)
-async def _update_password(
-    reset_password_data: Annotated[UpdatePasswordRequest, Body()],
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-):
-    try:
-        await reset_password(reset_data=reset_password_data, session=session)
-
-        return DetailResponse(detail="User password reset successfully")
-
-    except HTTPException as exc:
-        logger.error("_update_password error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("_update_password error")
         logger.exception(exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)

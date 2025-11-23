@@ -164,43 +164,6 @@ class TaskManager:
             if self.current_processing_task == task_id:
                 self.current_processing_task = None
 
-    async def cancel_task(self, task_id: str) -> bool:
-        task = self.get_task(task_id)
-        if task and task.status in [
-            TaskStatus.PENDING,
-            TaskStatus.QUEUED,
-            TaskStatus.PROCESSING,
-        ]:
-            task.status = TaskStatus.CANCELLED
-            task.completed_at = datetime.now()
-            task.current_step = "Cancelled"
-
-            # Remove from queue if queued
-            async with self._queue_lock:
-                if task_id in self.task_queue:
-                    self.task_queue.remove(task_id)
-                    # Update queue positions
-                    for i, queued_task_id in enumerate(self.task_queue):
-                        queued_task = self.get_task(queued_task_id)
-                        if queued_task:
-                            queued_task.queue_position = i + 1
-                            queued_task.current_step = f"Queued (position {i + 1})"
-
-                # Release processing slot if this was the current task
-                if self.current_processing_task == task_id:
-                    self.current_processing_task = None
-
-            return True
-        return False
-
-    def get_queue_status(self) -> Dict:
-        """Get current queue status"""
-        return {
-            "current_processing": self.current_processing_task,
-            "queue_length": len(self.task_queue),
-            "queued_tasks": self.task_queue.copy(),
-        }
-
 
 # Global task manager instance
 task_manager = TaskManager()
