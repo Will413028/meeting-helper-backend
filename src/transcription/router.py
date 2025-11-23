@@ -5,7 +5,6 @@ import zipfile
 import tempfile
 import mimetypes
 from pathlib import Path
-from datetime import datetime, timedelta
 from typing import Annotated, Optional
 from fastapi import (
     APIRouter,
@@ -35,14 +34,10 @@ from src.transcription.service import (
     create_transcription,
     get_transcription_by_transcription_id,
     delete_transcription_by_id,
-    cleanup_old_transcriptions,
     get_transcriptions,
     update_transcription_api,
-    update_transcription,
 )
 from src.group.service import get_super_admin_group_id
-from src.transcription.ollama_service import generate_summary, check_ollama_availability
-from src.transcription.srt_utils import extract_text_from_srt
 from src.transcription.schemas import (
     CreateTranscriptionParams,
     GetTranscriptionsParams,
@@ -50,13 +45,9 @@ from src.transcription.schemas import (
     GetTranscriptionResponse,
     UpdateTranscriptionParams,
 )
-from src.transcription.background_processor import (
-    cancel_transcription_task,
-)
 from src.transcription.audio_utils import get_audio_duration
 from src.schemas import PaginatedDataResponse, DataResponse, DetailResponse
 from src.transcription.background_processor import queue_audio_processing
-from src.database import AsyncSessionLocal
 from src.constants import Role
 
 router = APIRouter(tags=["transcription"])
@@ -195,18 +186,6 @@ async def _transcribe_audio(
     }
 
 
-@router.get("/v1/task/{task_id}")
-async def _get_task_status(task_id: str):
-    """Get the status and progress of a transcription task"""
-    task = task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
-
-    return task.to_dict()
-
-
 @router.get("/v1/tasks")
 async def _list_tasks(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -243,76 +222,6 @@ async def _list_tasks(
     ]
 
     return {"count": len(tasks), "tasks": tasks}
-
-
-@router.get("/v1/queue/status")
-async def _get_queue_status():
-    """Get the current queue status"""
-    queue_status = task_manager.get_queue_status()
-
-    # Get details of current processing task
-    current_task = None
-    if queue_status["current_processing"]:
-        task = task_manager.get_task(queue_status["current_processing"])
-        if task:
-            current_task = {
-                "task_id": task.task_id,
-                "filename": task.filename,
-                "progress": task.progress,
-                "current_step": task.current_step,
-            }
-
-    # Get details of queued tasks
-    queued_tasks = []
-    for task_id in queue_status["queued_tasks"]:
-        task = task_manager.get_task(task_id)
-        if task:
-            queued_tasks.append(
-                {
-                    "task_id": task.task_id,
-                    "filename": task.filename,
-                    "queue_position": task.queue_position,
-                }
-            )
-
-    return {
-        "current_processing": current_task,
-        "queue_length": queue_status["queue_length"],
-        "queued_tasks": queued_tasks,
-    }
-
-
-@router.post("/v1/task/{task_id}/cancel")
-async def _cancel_task(task_id: str):
-    """Cancel a running transcription task"""
-    # Check if task exists
-    task = task_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task not found"
-        )
-
-    # Check if task can be cancelled
-    if task.status.value not in ["pending", "processing"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Task cannot be cancelled. Current status: {task.status.value}",
-        )
-
-    # Cancel the task
-    success = await cancel_transcription_task(task_id)
-
-    if success:
-        return {
-            "task_id": task_id,
-            "message": "Task cancelled successfully",
-            "status": "cancelled",
-        }
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to cancel task",
-        )
 
 
 @router.get(
@@ -414,57 +323,6 @@ async def _delete_transcription_endpoint(
     }
 
     response["files_deleted"] = files_deleted
-    return response
-
-
-@router.post("/v1/transcriptions/cleanup")
-async def _cleanup_old_transcriptions_endpoint(
-    days: int = 30,
-    delete_files: bool = False,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """
-    Clean up transcriptions older than specified days
-
-    Args:
-        days: Delete transcriptions older than this many days (default: 30)
-        delete_files: Whether to also delete associated files
-    """
-    if days < 1:
-        raise HTTPException(status_code=400, detail="Days must be at least 1")
-
-    # Get old transcriptions before deletion if we need to delete files
-    files_deleted = []
-    if delete_files:
-        # Query database directly to get full transcription records with file paths
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        result = await session.execute(
-            select(Transcription).where(Transcription.created_at < cutoff_date)
-        )
-        old_transcriptions = result.scalars().all()
-
-        for trans in old_transcriptions:
-            # Delete associated files
-            for file_path in [trans.audio_path, trans.srt_path]:
-                if file_path and os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                        files_deleted.append(file_path)
-                    except Exception as e:
-                        logger.error(f"Error deleting file {file_path}: {e}")
-
-    # Clean up database records
-    deleted_count = await cleanup_old_transcriptions(session, days=days)
-
-    response = {
-        "message": f"Cleaned up {deleted_count} transcriptions older than {days} days",
-        "deleted_count": deleted_count,
-    }
-
-    if delete_files:
-        response["files_deleted"] = len(files_deleted)
-        response["file_paths"] = files_deleted
-
     return response
 
 
@@ -658,99 +516,6 @@ async def _stream_audio(
     )
 
 
-@router.get("/v1/transcription/{transcription_id}/audio/info")
-async def _get_audio_info(
-    transcription_id: int,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """
-    Get audio file metadata.
-    Useful for frontend to display information before loading the audio.
-    """
-    # Get the transcription record
-    result = await session.execute(
-        select(Transcription).filter_by(transcription_id=transcription_id)
-    )
-    transcription = result.scalar_one_or_none()
-
-    if not transcription:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
-        )
-
-    audio_path = transcription.audio_path
-    if not audio_path or not os.path.exists(audio_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found"
-        )
-
-    file_size = os.path.getsize(audio_path)
-    file_extension = os.path.splitext(audio_path)[1][1:]  # Remove the dot
-
-    return {
-        "transcription_id": transcription_id,
-        "filename": transcription.filename,
-        "title": transcription.transcription_title,
-        "size_bytes": file_size,
-        "size_mb": round(file_size / (1024 * 1024), 2),
-        "duration": transcription.audio_duration,
-        "format": file_extension,
-        "language": transcription.language,
-        "created_at": transcription.created_at.isoformat()
-        if transcription.created_at
-        else None,
-        "has_srt": bool(
-            transcription.srt_path and os.path.exists(transcription.srt_path)
-        ),
-    }
-
-
-@router.get("/v1/transcription/{transcription_id}/srt")
-async def _get_srt_content(
-    transcription_id: int,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """
-    Get SRT subtitle content as plain text.
-    Used by frontend to display synchronized subtitles with audio playback.
-    """
-    # Get the transcription record
-    result = await session.execute(
-        select(Transcription).filter_by(transcription_id=transcription_id)
-    )
-    transcription = result.scalar_one_or_none()
-
-    if not transcription:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
-        )
-
-    srt_path = transcription.srt_path
-    if not srt_path or not os.path.exists(srt_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="SRT file not found"
-        )
-
-    # Read SRT content
-    try:
-        with open(srt_path, "r", encoding="utf-8") as f:
-            content = f.read()
-
-        return Response(
-            content=content,
-            media_type="text/plain; charset=utf-8",
-            headers={"Cache-Control": "public, max-age=3600"},
-        )
-    except Exception as e:
-        logger.error(
-            f"Error reading SRT file for transcription {transcription_id}: {e}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to read SRT file",
-        )
-
-
 @router.put(
     "/v1/transcription/{transcription_id}",
     response_model=DetailResponse,
@@ -779,88 +544,3 @@ async def _update_transcription(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
-
-
-@router.post("/v1/transcription/{transcription_id}/generate-summary")
-async def _generate_summary_for_transcription(
-    transcription_id: int,
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db_session),
-):
-    """Generate or regenerate summary for an existing transcription"""
-
-    # Get transcription details
-    result = await session.execute(
-        select(Transcription).filter_by(transcription_id=transcription_id)
-    )
-    transcription = result.scalar_one_or_none()
-
-    if not transcription:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Transcription not found",
-        )
-
-    # Check if Ollama is available
-    if not await check_ollama_availability():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ollama service is not available",
-        )
-
-    # Extract text from SRT if not already available
-    transcription_text = transcription.transcription_text
-    if not transcription_text and transcription.srt_path:
-        if os.path.exists(transcription.srt_path):
-            # Extract text with speaker information preserved
-            transcription_text = extract_text_from_srt(
-                transcription.srt_path,
-                convert_to_traditional=True,
-                preserve_speakers=True,
-            )
-            if transcription_text:
-                # Save the extracted text
-                await update_transcription(
-                    session,
-                    task_id=transcription.task_id,
-                    transcription_text=transcription_text,
-                )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="SRT file not found",
-            )
-
-    if not transcription_text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No transcription text available",
-        )
-
-    # Generate summary in background
-    async def generate_and_save_summary():
-        try:
-            summary = await generate_summary(transcription_text)
-            if summary:
-                async with AsyncSessionLocal() as session:
-                    await update_transcription(
-                        session, task_id=transcription.task_id, summary=summary
-                    )
-                logger.info(
-                    f"Successfully generated summary for transcription {transcription_id}"
-                )
-            else:
-                logger.error(
-                    f"Failed to generate summary for transcription {transcription_id}"
-                )
-        except Exception as e:
-            logger.error(
-                f"Error generating summary for transcription {transcription_id}: {e}"
-            )
-
-    background_tasks.add_task(generate_and_save_summary)
-
-    return {
-        "message": "Summary generation started",
-        "transcription_id": transcription_id,
-    }

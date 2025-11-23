@@ -1,5 +1,3 @@
-"""Background processor for transcription tasks using proper async handling"""
-
 import os
 import asyncio
 from sqlalchemy import select
@@ -11,7 +9,6 @@ import subprocess
 from src.segment.service import (
     initialize_segments_from_srt,
 )
-from src.whisperx_diarize import terminate_process
 from src.whisperx_diarize import whisperx_diarize_with_progress
 from src.task_manager import task_manager, TaskStatus
 from src.database import AsyncSessionLocal
@@ -419,31 +416,3 @@ async def _cleanup_cancelled_task(task_id: str, audio_path: str):
             logger.info(f"Cleaned up audio file for cancelled task {task_id}")
         except Exception as e:
             logger.error(f"Error cleaning up audio file {audio_path}: {e}")
-
-
-async def cancel_transcription_task(task_id: str) -> bool:
-    """Cancel a running transcription task"""
-    # First, update the task status
-    cancelled = await task_manager.cancel_task(task_id)
-
-    if cancelled:
-        # Try to terminate the WhisperX process if it's running
-
-        process_terminated = terminate_process(task_id)
-        if process_terminated:
-            logger.info(f"Terminated WhisperX process for task {task_id}")
-
-        # Update database
-        async with AsyncSessionLocal() as session:
-            await update_transcription(
-                session,
-                task_id=task_id,
-                status="cancelled",
-                completed_at=datetime.now(),
-                current_step="Cancelled by user",
-            )
-
-        logger.info(f"Successfully cancelled task {task_id}")
-        return True
-
-    return False

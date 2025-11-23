@@ -17,11 +17,6 @@ class SpeakerResponse(SpeakerBase):
     updated_at: datetime
 
 
-class SpeakerUpdate(BaseModel):
-    display_name: Optional[str] = None
-    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
-
-
 class TranscriptSegmentBase(BaseModel):
     sequence_number: int
     start_time: str
@@ -50,42 +45,3 @@ class TranscriptSegmentsResponse(BaseModel):
     speakers: List[SpeakerResponse]
     segments: List[TranscriptSegmentResponse]
     total_segments: int
-
-
-class MergeSegmentsRequest(BaseModel):
-    segment_ids: List[int] = Field(..., min_items=2)
-
-
-class SplitSegmentRequest(BaseModel):
-    split_at_seconds: float = Field(..., gt=0)
-    split_text_at: Optional[int] = Field(None, gt=0)
-
-
-class SegmentAtTimeResponse(BaseModel):
-    segment: Optional[TranscriptSegmentResponse]
-    next_segment: Optional[TranscriptSegmentResponse]
-    previous_segment: Optional[TranscriptSegmentResponse]
-
-
-class ExportFormat(BaseModel):
-    format: str = Field(..., pattern="^(srt|vtt|txt|json)$")
-
-
-class BulkSegmentUpdate(BaseModel):
-    segments: List[dict] = Field(
-        ..., description="List of segment updates with segment_id and fields to update"
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "segments": [
-                        {"segment_id": 1, "content": "Updated text", "speaker_id": 2},
-                        {"segment_id": 2, "content": "Another update"},
-                        {"segment_id": 3, "speaker_id": 1},
-                    ]
-                }
-            ]
-        }
-    }

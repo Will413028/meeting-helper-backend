@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.schemas import (
     CreateUserRequest,
-    UpdatePasswordRequest,
     GetUserByAccountResponse,
 )
 from src.auth.utils import get_password_hash, verify_password
@@ -100,21 +99,3 @@ async def authenticate_user(
         )
 
     return db_user
-
-
-async def reset_password(reset_data: UpdatePasswordRequest, session: AsyncSession):
-    try:
-        db_user = await get_user_by_account(session=session, account=reset_data.phone)
-
-        if not db_user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-            )
-
-        db_user.password = await get_password_hash(password=reset_data.password)
-
-        await session.commit()
-
-    except Exception as e:
-        await session.rollback()
-        raise e

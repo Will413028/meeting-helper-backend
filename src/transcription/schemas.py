@@ -8,26 +8,6 @@ from pydantic import BaseModel
 T = TypeVar("T")
 
 
-class GetUserResponse(BaseModel):
-    group_name: str
-    user_id: int
-    account: str
-    name: str
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "group_name": "開發部",
-                    "user_id": 1,
-                    "account": "rd1",
-                    "name": "RD1",
-                }
-            ]
-        }
-    }
-
-
 class GetTranscriptionsParams(BaseModel):
     page: Annotated[int, Query(ge=1)] = 1
     page_size: Annotated[int, Query(ge=1, le=100)] = 10
