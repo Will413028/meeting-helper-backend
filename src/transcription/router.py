@@ -43,10 +43,14 @@ from src.transcription.schemas import (
 )
 from src.transcription.service import (
     create_transcription,
-    delete_transcription_by_id,
+    delete_transcription_service,
     get_transcription_by_transcription_id,
     get_transcriptions,
     update_transcription_api,
+)
+from src.transcription.audio_utils import (
+    is_supported_audio_file,
+    ALLOWED_AUDIO_EXTENSIONS,
 )
 
 router = APIRouter(tags=["transcription"])
@@ -62,22 +66,10 @@ async def transcribe_audio_handler(
 ):
     """Upload an audio file and start async transcription with progress tracking"""
 
-    # Validate file extension
-    allowed_extensions = {
-        ".mp3",
-        ".wav",
-        ".mp4",
-        ".m4a",
-        ".flac",
-        ".ogg",
-        ".webm",
-        ".mov",
-    }
-    file_extension = Path(file.filename).suffix.lower()
-    if file_extension not in allowed_extensions:
+    if not is_supported_audio_file(file.filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not supported. Allowed types: {', '.join(allowed_extensions)}",
+            detail=f"File type not supported. Allowed types: {', '.join(ALLOWED_AUDIO_EXTENSIONS)}",
         )
 
     # Create task
@@ -104,6 +96,8 @@ async def transcribe_audio_handler(
     transcription_title = Path(file.filename).stem
     srt_filename = f"{task_id}_{transcription_title}.srt"
     srt_path = os.path.join(settings.OUTPUT_DIR, srt_filename)
+
+    file_extension = Path(file.filename).suffix.lower()
 
     await create_transcription(
         session=session,
@@ -215,48 +209,19 @@ async def delete_transcription_endpoint_handler(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
-    transcription_response = await get_transcription_by_transcription_id(
-        session=session, transcription_id=transcription_id
-    )
-    if not transcription_response or not transcription_response.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
-        )
+    result = await delete_transcription_service(session, transcription_id)
 
-    # We need to get the full transcription record to access file paths
-    # The get_transcription_by_transcription_id only returns selected fields
-    result = await session.execute(
-        select(Transcription).filter_by(transcription_id=transcription_id)
-    )
-    transcription = result.scalar_one_or_none()
-
-    if not transcription:
-        raise HTTPException(status_code=404, detail="Transcription not found")
-
-    files_deleted = []
-    for file_path in [
-        transcription.audio_path,
-        transcription.srt_path,
-    ]:
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-                files_deleted.append(file_path)
-            except Exception as e:
-                # Log error but continue
-                logger.error(f"Error deleting file {file_path}: {e}")
-
-    # Delete from database
-    success = await delete_transcription_by_id(session, transcription_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to delete transcription")
+    if not result["success"]:
+        error_msg = result.get("error", "Failed to delete transcription")
+        if error_msg == "Transcription not found":
+            raise HTTPException(status_code=404, detail="Transcription not found")
+        raise HTTPException(status_code=500, detail=error_msg)
 
     response = {
         "message": "Transcription deleted successfully",
         "transcription_id": transcription_id,
+        "files_deleted": result.get("files_deleted", []),
     }
-
-    response["files_deleted"] = files_deleted
     return response
 
 

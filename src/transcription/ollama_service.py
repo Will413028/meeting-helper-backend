@@ -526,7 +526,7 @@ async def generate_tags(
                             for tag in potential_tags:
                                 tag = tag.strip()
                                 # Remove quotes
-                                tag = tag.strip('"\'""' "")
+                                tag = tag.strip('"\'""')
 
                                 # Skip if tag contains sentence-ending punctuation
                                 if any(
