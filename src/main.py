@@ -3,7 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
 
 from src.auth.router import router as auth_router
 from src.transcription.router import router as transcription_router
@@ -53,6 +53,14 @@ async def add_process_time_header(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return ORJSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
 
 
 @app.exception_handler(Exception)

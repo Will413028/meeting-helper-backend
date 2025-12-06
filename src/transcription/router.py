@@ -1,73 +1,69 @@
 import os
-import re
-import shutil
-import zipfile
-import tempfile
 import mimetypes
+import re
 from pathlib import Path
 from typing import Annotated, Optional
+
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
-    Query,
     File,
-    Body,
+    Form,
+    Header,
     HTTPException,
+    Response,
     UploadFile,
     status,
-    BackgroundTasks,
-    Header,
-    Response,
-    Form,
+    Query,
+    Body,
 )
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
-from pydub import AudioSegment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.auth.dependencies import get_current_user
+from src.config import settings
+from src.constants import Role
 from src.database import get_db_session
+from src.group.service import get_super_admin_group_id
 from src.logger import logger
 from src.models import Transcription, User
+from src.schemas import DataResponse, DetailResponse, PaginatedDataResponse
 from src.task_manager import task_manager
-from src.config import settings
+from src.transcription.audio_service import convert_to_mp3, create_transcription_zip
+from src.transcription.background_processor import queue_audio_processing
+from src.transcription.schemas import (
+    CreateTranscriptionParams,
+    GetTranscriptionByTranscriptionIdResponse,
+    GetTranscriptionResponse,
+    GetTranscriptionsParams,
+    UpdateTranscriptionParams,
+)
 from src.transcription.service import (
     create_transcription,
-    get_transcription_by_transcription_id,
     delete_transcription_by_id,
+    get_transcription_by_transcription_id,
     get_transcriptions,
     update_transcription_api,
 )
-from src.group.service import get_super_admin_group_id
-from src.transcription.schemas import (
-    CreateTranscriptionParams,
-    GetTranscriptionsParams,
-    GetTranscriptionByTranscriptionIdResponse,
-    GetTranscriptionResponse,
-    UpdateTranscriptionParams,
-)
-from src.transcription.audio_utils import get_audio_duration
-from src.schemas import PaginatedDataResponse, DataResponse, DetailResponse
-from src.transcription.background_processor import queue_audio_processing
-from src.constants import Role
 
 router = APIRouter(tags=["transcription"])
 
 
 @router.post("/v1/transcribe")
-async def _transcribe_audio(
+async def transcribe_audio_handler(
     current_user: Annotated[User, Depends(get_current_user)],
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = Form(default="zh"),
     session: AsyncSession = Depends(get_db_session),
 ):
-    """
-    Upload an audio file and start async transcription with progress tracking
+    """Upload an audio file and start async transcription with progress tracking"""
 
-    Returns task_id to track progress
-    """
     # Validate file extension
-    allowed_extensions = [
+    allowed_extensions = {
         ".mp3",
         ".wav",
         ".mp4",
@@ -76,7 +72,7 @@ async def _transcribe_audio(
         ".ogg",
         ".webm",
         ".mov",
-    ]
+    }
     file_extension = Path(file.filename).suffix.lower()
     if file_extension not in allowed_extensions:
         raise HTTPException(
@@ -89,64 +85,25 @@ async def _transcribe_audio(
         filename=file.filename, group_id=current_user.group_id
     )
 
-    # Save uploaded file to a temporary location first
-    temp_file = None
     try:
-        # Create a temporary file to save the uploaded content
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=file_extension
-        ) as temp_file:
-            shutil.copyfileobj(file.file, temp_file)
-            temp_path = temp_file.name
-
-        # Convert to MP3
-        logger.info(f"Converting {file.filename} to MP3 format")
-
-        # Load the audio file
-        audio = AudioSegment.from_file(temp_path)
-
-        # Set up MP3 output path
-        mp3_filename = f"{task_id}_{Path(file.filename).stem}.mp3"
-        audio_path = os.path.join(settings.OUTPUT_DIR, mp3_filename)
-
-        # Export as MP3 with good quality settings
-        audio.export(
-            audio_path,
-            format="mp3",
-            bitrate="192k",  # Good quality bitrate
-            parameters=["-q:a", "2"],  # MP3 quality setting (0-9, lower is better)
+        # Run blocking audio conversion in a separate thread
+        audio_path, audio_duration = await run_in_threadpool(
+            convert_to_mp3, file=file, task_id=task_id, output_dir=settings.OUTPUT_DIR
         )
 
-        logger.info(f"Successfully converted audio to MP3: {audio_path}")
-
     except Exception as e:
-        logger.error(f"Error converting audio to MP3: {e}")
-        # Clean up task if conversion fails
+        logger.error(f"Error converting audio: {e}")
         task_manager.update_task(task_id, "failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to convert audio to MP3: {str(e)}",
+            detail=f"Failed to process audio file: {str(e)}",
         )
-    finally:
-        # Clean up temporary file
-        if temp_file and os.path.exists(temp_path):
-            os.unlink(temp_path)
 
     # The SRT filename will match the MP3 filename (without extension)
-    srt_filename = f"{task_id}_{Path(file.filename).stem}.srt"
-    srt_path = os.path.join(settings.OUTPUT_DIR, srt_filename)
-    output_dir = settings.OUTPUT_DIR
-
-    # Generate a title from the filename (remove extension)
+    # Note: audio_path comes from the service, effectively "{task_id}_{stem}.mp3"
     transcription_title = Path(file.filename).stem
-
-    # Extract audio duration from the converted MP3 file
-    audio_duration = get_audio_duration(audio_path)
-    if audio_duration is None:
-        logger.warning(
-            f"Could not extract audio duration for {audio_path}, setting to 0"
-        )
-        audio_duration = 0.0
+    srt_filename = f"{task_id}_{transcription_title}.srt"
+    srt_path = os.path.join(settings.OUTPUT_DIR, srt_filename)
 
     await create_transcription(
         session=session,
@@ -160,7 +117,7 @@ async def _transcribe_audio(
             srt_path=srt_path,
             language=language,
             status="pending",
-            audio_duration=audio_duration,  # Add the extracted duration
+            audio_duration=audio_duration,
             extra_metadata={
                 "file_size": os.path.getsize(audio_path),
                 "original_filename": file.filename,
@@ -174,7 +131,7 @@ async def _transcribe_audio(
         queue_audio_processing,
         task_id,
         audio_path,
-        output_dir,
+        settings.OUTPUT_DIR,
         language,
         settings.HUG_TOKEN,
     )
@@ -187,7 +144,7 @@ async def _transcribe_audio(
 
 
 @router.get("/v1/tasks")
-async def _list_tasks(
+async def list_tasks_handler(
     current_user: Annotated[User, Depends(get_current_user)],
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -227,57 +184,34 @@ async def _list_tasks(
 @router.get(
     "/v1/transcriptions", response_model=PaginatedDataResponse[GetTranscriptionResponse]
 )
-async def _get_transcriptions(
+async def get_transcriptions_handler(
     current_user: Annotated[User, Depends(get_current_user)],
     query_params: Annotated[GetTranscriptionsParams, Query()],
     session: AsyncSession = Depends(get_db_session),
 ):
-    try:
-        return await get_transcriptions(
-            user=current_user,
-            session=session,
-            name=query_params.name,
-            page=query_params.page,
-            page_size=query_params.page_size,
-        )
-    except HTTPException as exc:
-        logger.error("get_transcriptions error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("get_transcriptions error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    return await get_transcriptions(
+        user=current_user,
+        session=session,
+        name=query_params.name,
+        page=query_params.page,
+        page_size=query_params.page_size,
+    )
 
 
 @router.get(
     "/v1/transcription/{transcription_id}",
     response_model=DataResponse[GetTranscriptionByTranscriptionIdResponse],
 )
-async def _get_transcription_detail(
+async def get_transcription_detail_handler(
     transcription_id: int, session: AsyncSession = Depends(get_db_session)
 ):
-    try:
-        return await get_transcription_by_transcription_id(
-            session=session, transcription_id=transcription_id
-        )
-
-    except HTTPException as exc:
-        logger.error("get_transcription_endpoint error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("get_transcription_endpoint error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    return await get_transcription_by_transcription_id(
+        session=session, transcription_id=transcription_id
+    )
 
 
 @router.delete("/v1/transcription/{transcription_id}")
-async def _delete_transcription_endpoint(
+async def delete_transcription_endpoint_handler(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -310,7 +244,7 @@ async def _delete_transcription_endpoint(
                 files_deleted.append(file_path)
             except Exception as e:
                 # Log error but continue
-                print(f"Error deleting file {file_path}: {e}")
+                logger.error(f"Error deleting file {file_path}: {e}")
 
     # Delete from database
     success = await delete_transcription_by_id(session, transcription_id)
@@ -327,16 +261,12 @@ async def _delete_transcription_endpoint(
 
 
 @router.get("/v1/transcription/{transcription_id}/download")
-async def _download_transcription_files(
+async def download_transcription_files_handler(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
     """
     Download transcription audio and SRT files as a zip archive
-
-    Returns a zip file containing:
-    - The original audio file
-    - The SRT subtitle file
     """
     # Get the transcription record
     result = await session.execute(
@@ -360,40 +290,19 @@ async def _download_transcription_files(
             status_code=status.HTTP_404_NOT_FOUND, detail="SRT file not found"
         )
 
-    # Create a temporary zip file
-    temp_dir = tempfile.mkdtemp()
-    zip_filename = f"transcription_{transcription_id}_download.zip"
-    zip_path = os.path.join(temp_dir, zip_filename)
-
     try:
-        # Create zip file
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-            # Add audio file with original filename
-            audio_filename = Path(transcription.audio_path).name
-            # Remove task_id prefix if present
-            if (
-                "_" in audio_filename
-                and audio_filename.split("_")[0] == transcription.task_id
-            ):
-                audio_filename = "_".join(audio_filename.split("_")[1:])
-            zipf.write(transcription.audio_path, arcname=audio_filename)
+        # Use service to create zip without blocking
+        zip_path = await run_in_threadpool(
+            create_transcription_zip,
+            transcription_id=transcription_id,
+            task_id=transcription.task_id,
+            audio_path=transcription.audio_path,
+            srt_path=transcription.srt_path,
+            transcription_title=transcription.transcription_title,
+            summary=transcription.summary,
+        )
 
-            # Add SRT file
-            srt_filename = f"{transcription.transcription_title or 'subtitles'}.txt"
-            zipf.write(transcription.srt_path, arcname=srt_filename)
-
-            # Add summary file if available
-            if transcription.summary:
-                summary_filename = (
-                    f"{transcription.transcription_title or 'summary'}_summary.txt"
-                )
-                # Create temporary summary file
-                summary_path = os.path.join(temp_dir, summary_filename)
-                with open(summary_path, "w", encoding="utf-8") as f:
-                    f.write(transcription.summary)
-                zipf.write(summary_path, arcname=summary_filename)
-                # Clean up temporary summary file
-                os.remove(summary_path)
+        zip_filename = Path(zip_path).name
 
         # Return the zip file
         return FileResponse(
@@ -404,16 +313,9 @@ async def _download_transcription_files(
         )
 
     except Exception as e:
-        # Clean up on error
-        if os.path.exists(zip_path):
-            os.remove(zip_path)
-        if os.path.exists(temp_dir):
-            os.rmdir(temp_dir)
-
         logger.error(
             f"Error creating zip file for transcription {transcription_id}: {e}"
         )
-
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to create download archive" + str(e),
@@ -421,19 +323,13 @@ async def _download_transcription_files(
 
 
 @router.get("/v1/transcription/{transcription_id}/audio")
-async def _stream_audio(
+async def stream_audio_handler(
     transcription_id: int,
     range: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
 ):
     """
     Stream audio file with support for range requests.
-    This endpoint is used by audio players and waveform visualizers.
-
-    Supports:
-    - Range requests for seeking
-    - Proper content-type detection
-    - Caching headers
     """
     # Get the transcription record
     result = await session.execute(
@@ -520,27 +416,14 @@ async def _stream_audio(
     "/v1/transcription/{transcription_id}",
     response_model=DetailResponse,
 )
-async def _update_transcription(
+async def update_transcription_handler(
     transcription_id: Annotated[int, Path()],
     transcription_data: Annotated[UpdateTranscriptionParams, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        await update_transcription_api(
-            session=session,
-            transcription_id=transcription_id,
-            transcription_data=transcription_data,
-        )
-
-        return DetailResponse(detail="User password reset successfully")
-
-    except HTTPException as exc:
-        logger.error("Update group error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("Update group error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    await update_transcription_api(
+        session=session,
+        transcription_id=transcription_id,
+        transcription_data=transcription_data,
+    )
+    return DetailResponse(detail="User password reset successfully")
