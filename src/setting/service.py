@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, insert, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas import DataResponse
+from src.core.schemas import DataResponse
 from src.setting.schemas import GetSettingResponse, UpdateSettingParam
 from src.models import Setting
 

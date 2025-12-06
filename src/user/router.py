@@ -27,8 +27,8 @@ from src.user.service import (
     delete_user_by_id,
     get_list_users,
 )
-from src.database import get_db_session
-from src.schemas import (
+from src.core.database import get_db_session
+from src.core.schemas import (
     DetailResponse,
     ListDataResponse,
     PaginatedDataResponse,

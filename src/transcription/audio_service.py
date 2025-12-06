@@ -5,7 +5,7 @@ import zipfile
 from pathlib import Path
 from pydub import AudioSegment
 from fastapi import UploadFile
-from src.logger import logger
+from src.core.logger import logger
 from src.transcription.audio_utils import get_audio_duration
 
 

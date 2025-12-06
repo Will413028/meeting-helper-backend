@@ -21,9 +21,9 @@ from src.auth.service import (
     create_user,
     get_user_by_account,
 )
-from src.config import settings
-from src.database import get_db_session
-from src.schemas import DetailResponse
+from src.core.config import settings
+from src.core.database import get_db_session
+from src.core.schemas import DetailResponse
 
 router = APIRouter(
     tags=["users"],

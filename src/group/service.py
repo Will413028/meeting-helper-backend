@@ -9,7 +9,7 @@ from sqlalchemy import (
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas import PaginatedDataResponse, ListDataResponse
+from src.core.schemas import PaginatedDataResponse, ListDataResponse
 from src.group.schemas import (
     CreateGroupRequest,
     UpdateGroupsRequest,
@@ -17,7 +17,7 @@ from src.group.schemas import (
     GetSimpleGroupResponse,
 )
 from src.models import User, Group
-from src.constants import Role
+from src.core.constants import Role
 
 
 async def get_group_by_name(session: AsyncSession, name: str) -> Group:

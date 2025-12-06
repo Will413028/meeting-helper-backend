@@ -1,7 +1,7 @@
 from enum import Enum
 from zoneinfo import ZoneInfo
 
-from src.schemas import Error
+from src.core.schemas import Error
 
 TAIWAN_TZ = ZoneInfo("Asia/Taipei")
 

@@ -2,17 +2,16 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 import jwt
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.service import get_user_by_account
 from src.auth.utils import oauth2_scheme
-from src.config import settings
-from src.constants import Role
-from src.database import get_db_session
+from src.core.config import settings
+from src.core.constants import Role
+from src.core.database import get_db_session
 from src.models import User
-
-from jwt.exceptions import InvalidTokenError
-from src.logger import logger
+from src.core.logger import logger
 
 
 async def get_current_user(

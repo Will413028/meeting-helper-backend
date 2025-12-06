@@ -1,5 +1,5 @@
 import re
-from src.logger import logger
+from src.core.logger import logger
 
 
 def replace_speaker_names(

@@ -4,8 +4,8 @@ from typing import Optional
 import os
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.constants import Role
-from src.schemas import DataResponse, PaginatedDataResponse
+from src.core.constants import Role
+from src.core.schemas import DataResponse, PaginatedDataResponse
 from src.models import Transcription, Speaker, TranscriptSegment, User
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
@@ -13,7 +13,7 @@ from src.transcription.schemas import (
     GetTranscriptionResponse,
     UpdateTranscriptionParams,
 )
-from src.logger import logger
+from src.core.logger import logger
 
 
 async def create_transcription(

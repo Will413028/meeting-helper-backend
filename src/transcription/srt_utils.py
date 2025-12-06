@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 from typing import Optional
-from src.logger import logger
+from src.core.logger import logger
 import opencc
 
 
