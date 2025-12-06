@@ -11,10 +11,10 @@ from src.segment.router import router as segment_router
 from src.group.router import router as group_router
 from src.user.router import router as user_router
 from src.setting.router import router as setting_router
-from src.config import settings
-from src.constants import DEFAULT_ERROR_RESPONSE
-from src.logger import logger
-from src.database import engine
+from src.core.config import settings
+from src.core.constants import DEFAULT_ERROR_RESPONSE
+from src.core.logger import logger
+from src.core.database import engine
 from src.transcription.background_processor import restore_pending_tasks
 
 

@@ -4,7 +4,7 @@ from fastapi import HTTPException, Request, status
 from fastapi.responses import ORJSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.logger import logger
+from src.core.logger import logger
 
 
 class ProcessTimeMiddleware(BaseHTTPMiddleware):

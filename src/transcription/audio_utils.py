@@ -7,7 +7,7 @@ from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4
 from mutagen.flac import FLAC
 from mutagen.oggvorbis import OggVorbis
-from src.logger import logger
+from src.core.logger import logger
 
 
 def get_audio_duration(file_path: str) -> Optional[int]:

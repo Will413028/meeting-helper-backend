@@ -1,7 +1,7 @@
 from sqlalchemy import select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas import PaginatedDataResponse, DataResponse, ListDataResponse
+from src.core.schemas import PaginatedDataResponse, DataResponse, ListDataResponse
 from src.user.schemas import (
     GetUserResponse,
     UpdateUserRequest,

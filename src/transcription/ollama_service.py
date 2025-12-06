@@ -3,10 +3,10 @@
 import aiohttp
 import asyncio
 from typing import Optional, Dict
-from src.logger import logger
+from src.core.logger import logger
 import re
 from collections import Counter
-from src.config import settings
+from src.core.config import settings
 
 # Configuration
 OLLAMA_GENERATE_TIMEOUT = 300  # 5 minutes for generation

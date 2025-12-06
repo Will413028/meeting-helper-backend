@@ -11,12 +11,12 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_current_user
-from src.database import get_db_session
-from src.logger import logger
+from src.core.database import get_db_session
+from src.core.logger import logger
 from src.models import User
 from src.setting.service import get_settings, update_settings
 from src.setting.schemas import GetSettingResponse, UpdateSettingParam
-from src.schemas import DataResponse, DetailResponse
+from src.core.schemas import DataResponse, DetailResponse
 
 router = APIRouter(
     tags=["settings"],

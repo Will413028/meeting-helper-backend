@@ -6,7 +6,7 @@ from sqlalchemy.orm import (
 )
 from sqlalchemy.sql import false, func
 from datetime import datetime
-from src.constants import Role
+from src.core.constants import Role
 
 
 class Base(DeclarativeBase):

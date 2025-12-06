@@ -27,8 +27,8 @@ from src.group.service import (
     create_uncategorized_group,
     get_simple_groups,
 )
-from src.database import get_db_session
-from src.schemas import (
+from src.core.database import get_db_session
+from src.core.schemas import (
     DetailResponse,
     PaginatedDataResponse,
     ListDataResponse,

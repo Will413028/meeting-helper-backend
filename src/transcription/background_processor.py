@@ -9,9 +9,9 @@ import subprocess
 from src.segment.service import (
     initialize_segments_from_srt,
 )
-from src.whisperx_diarize import whisperx_diarize_with_progress
-from src.task_manager import task_manager, TaskStatus
-from src.database import AsyncSessionLocal
+from src.transcription.whisperx_diarize import whisperx_diarize_with_progress
+from src.task_manager import task_manager, TaskStatus, TranscriptionTask
+from src.core.database import AsyncSessionLocal
 from src.transcription.service import update_transcription
 from src.transcription.ollama_service import (
     generate_summary,
@@ -23,7 +23,7 @@ from src.transcription.srt_utils import (
     convert_srt_file_to_traditional,
     convert_srt_to_simple_format,
 )
-from src.logger import logger
+from src.core.logger import logger
 
 # Global dictionary to track running processes
 running_processes: Dict[str, subprocess.Popen] = {}
@@ -478,12 +478,6 @@ async def restore_pending_tasks():
 
             count = 0
             for task_record in tasks:
-                # Re-add to task manager
-                # We need to manually populate the task manager
-                from src.task_manager import (
-                    TranscriptionTask,
-                )  # Local import to avoid circular dependency if any
-
                 logger.info(f"Restoring task {task_record.task_id} from database")
                 task_manager.tasks[task_record.task_id] = TranscriptionTask(
                     task_id=task_record.task_id,
@@ -518,9 +512,6 @@ async def restore_pending_tasks():
                 task_record.status = TaskStatus.QUEUED.value
                 task_record.current_step = "Interrupted, re-queued"
                 session.add(task_record)
-
-                # Add to task manager
-                from src.task_manager import TranscriptionTask
 
                 task_manager.tasks[task_record.task_id] = TranscriptionTask(
                     task_id=task_record.task_id,

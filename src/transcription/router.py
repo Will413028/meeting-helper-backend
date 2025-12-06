@@ -1,6 +1,4 @@
 import os
-import mimetypes
-import re
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -12,7 +10,6 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
-    Response,
     UploadFile,
     status,
     Query,
@@ -22,15 +19,15 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from src.transcription.file_service import get_audio_file_response
 from src.auth.dependencies import get_current_user
-from src.config import settings
-from src.constants import Role
-from src.database import get_db_session
+from src.core.config import settings
+from src.core.constants import Role
+from src.core.database import get_db_session
 from src.group.service import get_super_admin_group_id
-from src.logger import logger
+from src.core.logger import logger
 from src.models import Transcription, User
-from src.schemas import DataResponse, DetailResponse, PaginatedDataResponse
+from src.core.schemas import DataResponse, DetailResponse, PaginatedDataResponse
 from src.task_manager import task_manager
 from src.transcription.audio_service import convert_to_mp3, create_transcription_zip
 from src.transcription.background_processor import queue_audio_processing
@@ -315,66 +312,9 @@ async def stream_audio_handler(
         )
 
     # Get file size
-    file_size = os.path.getsize(audio_path)
+    # Determine content type and handle partial content responses are delegated to the service
 
-    # Determine content type
-    content_type, _ = mimetypes.guess_type(audio_path)
-    if not content_type:
-        # Set default content type based on file extension
-        ext = os.path.splitext(audio_path)[1].lower()
-        content_types = {
-            ".mp3": "audio/mpeg",
-            ".wav": "audio/wav",
-            ".mp4": "audio/mp4",
-            ".m4a": "audio/mp4",
-            ".ogg": "audio/ogg",
-            ".webm": "audio/webm",
-            ".flac": "audio/flac",
-        }
-        content_type = content_types.get(ext, "audio/mpeg")
-
-    # If no range request, return the entire file
-    if not range:
-        return FileResponse(
-            audio_path,
-            media_type=content_type,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(file_size),
-                "Cache-Control": "public, max-age=3600",
-            },
-        )
-
-    # Parse range request
-    range_match = re.search(r"bytes=(\d+)-(\d*)", range)
-    if not range_match:
-        return FileResponse(audio_path, media_type=content_type)
-
-    start = int(range_match.group(1))
-    end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
-
-    # Ensure valid range
-    start = max(0, min(start, file_size - 1))
-    end = max(start, min(end, file_size - 1))
-    content_length = end - start + 1
-
-    # Read the requested range
-    with open(audio_path, "rb") as audio_file:
-        audio_file.seek(start)
-        data = audio_file.read(content_length)
-
-    # Return partial content
-    return Response(
-        content=data,
-        status_code=206,  # Partial Content
-        headers={
-            "Content-Type": content_type,
-            "Content-Length": str(content_length),
-            "Content-Range": f"bytes {start}-{end}/{file_size}",
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600",
-        },
-    )
+    return get_audio_file_response(audio_path, range)
 
 
 @router.put(
