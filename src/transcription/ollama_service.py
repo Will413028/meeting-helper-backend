@@ -47,16 +47,22 @@ async def _make_ollama_request(
 
     for attempt in range(max_retries):
         try:
-            async with aiohttp.ClientSession(connector=get_connector()) as session:
+            # Use connector_owner=False to prevent closing the shared connector
+            async with aiohttp.ClientSession(
+                connector=get_connector(), connector_owner=False
+            ) as session:
                 request_kwargs = {
                     "timeout": aiohttp.ClientTimeout(total=timeout),
                 }
                 if json_data:
                     request_kwargs["json"] = json_data
 
+                logger.debug(f"Making Ollama request to {url} (Attempt {attempt + 1})")
                 async with session.request(method, url, **request_kwargs) as response:
                     if response.status == 200:
-                        return await response.json(), None
+                        data = await response.json()
+                        logger.debug(f"Ollama request to {url} successful")
+                        return data, None
                     else:
                         error_text = await response.text()
                         msg = f"Ollama API error: {response.status} - {error_text}"
