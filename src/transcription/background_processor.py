@@ -183,29 +183,7 @@ async def process_audio(
         if not os.path.exists(srt_file_path):
             raise Exception("Failed to generate SRT file")
 
-        # Convert SRT to simple format (remove sequence numbers and end times)
-        logger.info(f"Converting SRT to simple format for task {task_id}")
-        if convert_srt_to_simple_format(srt_file_path):
-            logger.info("Successfully converted SRT to simple format")
-        else:
-            logger.warning(
-                "Failed to convert SRT to simple format, continuing with original"
-            )
-
-        # Convert SRT file: both speaker labels and text to traditional Chinese
-        if language == "zh":  # Only convert for Chinese language
-            logger.info(
-                f"Converting SRT file (speaker labels and text) to traditional Chinese for task {task_id}"
-            )
-            # This will convert both speaker labels ([SPEAKER_XX]: to 講者 XX:) and text to traditional Chinese
-            if convert_srt_file_to_traditional(srt_file_path, convert_speakers=True):
-                logger.info(
-                    "Successfully converted SRT file with speaker labels to traditional Chinese"
-                )
-            else:
-                logger.warning(
-                    "Failed to convert SRT file to traditional Chinese, continuing with original"
-                )
+        _post_process_srt(task_id, srt_file_path, language)
 
         # Extract transcription text from SRT (already converted, preserve speaker info)
         transcription_text = extract_text_from_srt(
@@ -416,3 +394,30 @@ async def _cleanup_cancelled_task(task_id: str, audio_path: str):
             logger.info(f"Cleaned up audio file for cancelled task {task_id}")
         except Exception as e:
             logger.error(f"Error cleaning up audio file {audio_path}: {e}")
+
+
+def _post_process_srt(task_id: str, srt_file_path: str, language: str) -> None:
+    """Refined post-processing for SRT files: simplification and traditional Chinese conversion"""
+    # Convert SRT to simple format (remove sequence numbers and end times)
+    logger.info(f"Converting SRT to simple format for task {task_id}")
+    if convert_srt_to_simple_format(srt_file_path):
+        logger.info("Successfully converted SRT to simple format")
+    else:
+        logger.warning(
+            "Failed to convert SRT to simple format, continuing with original"
+        )
+
+    # Convert SRT file: both speaker labels and text to traditional Chinese
+    if language == "zh":  # Only convert for Chinese language
+        logger.info(
+            f"Converting SRT file (speaker labels and text) to traditional Chinese for task {task_id}"
+        )
+        # This will convert both speaker labels ([SPEAKER_XX]: to 講者 XX:) and text to traditional Chinese
+        if convert_srt_file_to_traditional(srt_file_path, convert_speakers=True):
+            logger.info(
+                "Successfully converted SRT file with speaker labels to traditional Chinese"
+            )
+        else:
+            logger.warning(
+                "Failed to convert SRT file to traditional Chinese, continuing with original"
+            )
