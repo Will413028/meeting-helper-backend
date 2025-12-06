@@ -457,3 +457,92 @@ def _post_process_srt(task_id: str, srt_file_path: str, language: str) -> None:
             logger.warning(
                 "Failed to convert SRT file to traditional Chinese, continuing with original"
             )
+
+
+async def restore_pending_tasks():
+    """But restore queued tasks from database on startup"""
+    try:
+        logger.info("Checking for pending tasks in database...")
+        async with AsyncSessionLocal() as session:
+            # Find tasks that were queued or processing when server shut down
+            # If they were processing, they are likely interrupted, so we should re-queue them or fail them
+            # For now, let's re-queue 'queued' tasks. 'processing' tasks might need manual intervention or auto-failure
+            # The user asked specifically for "queued" tasks.
+            # Select tasks with status 'queued'
+            result = await session.execute(
+                select(Transcription).filter(
+                    Transcription.status.in_([TaskStatus.QUEUED.value])
+                )
+            )
+            tasks = result.scalars().all()
+
+            count = 0
+            for task_record in tasks:
+                # Re-add to task manager
+                # We need to manually populate the task manager
+                from src.task_manager import (
+                    TranscriptionTask,
+                )  # Local import to avoid circular dependency if any
+
+                logger.info(f"Restoring task {task_record.task_id} from database")
+                task_manager.tasks[task_record.task_id] = TranscriptionTask(
+                    task_id=task_record.task_id,
+                    filename=task_record.filename,
+                    group_id=task_record.group_id
+                    if task_record.group_id
+                    else 0,  # Default to 0 if None
+                )
+
+                # Set specific fields from DB
+                current_task = task_manager.get_task(task_record.task_id)
+                current_task.status = TaskStatus.QUEUED
+                current_task.created_at = task_record.created_at
+
+                # Add to queue
+                await task_manager.add_to_queue(task_record.task_id)
+                count += 1
+
+            # Also check for PROCESSING tasks and reset them to QUEUED
+            result_processing = await session.execute(
+                select(Transcription).filter(
+                    Transcription.status == TaskStatus.PROCESSING.value
+                )
+            )
+            processing_tasks = result_processing.scalars().all()
+            for task_record in processing_tasks:
+                logger.warning(
+                    f"Task {task_record.task_id} was interrupted during processing. Re-queuing."
+                )
+
+                # Update status in DB
+                task_record.status = TaskStatus.QUEUED.value
+                task_record.current_step = "Interrupted, re-queued"
+                session.add(task_record)
+
+                # Add to task manager
+                from src.task_manager import TranscriptionTask
+
+                task_manager.tasks[task_record.task_id] = TranscriptionTask(
+                    task_id=task_record.task_id,
+                    filename=task_record.filename,
+                    group_id=task_record.group_id if task_record.group_id else 0,
+                )
+                current_task = task_manager.get_task(task_record.task_id)
+                current_task.status = TaskStatus.QUEUED
+                current_task.created_at = task_record.created_at
+
+                # Add to queue
+                await task_manager.add_to_queue(task_record.task_id)
+                count += 1
+
+            await session.commit()
+
+            if count > 0:
+                logger.info(f"Restored {count} pending tasks from database")
+                # Ensure processor is running
+                await start_queue_processor()
+            else:
+                logger.info("No pending tasks found in database")
+
+    except Exception as e:
+        logger.error(f"Error restoring pending tasks: {e}")

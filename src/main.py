@@ -15,6 +15,7 @@ from src.config import settings
 from src.constants import DEFAULT_ERROR_RESPONSE
 from src.logger import logger
 from src.database import engine
+from src.transcription.background_processor import restore_pending_tasks
 
 
 @asynccontextmanager
@@ -22,6 +23,8 @@ async def lifespan(app: FastAPI):
     try:
         logger.info("Starting application")
         os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
+        # Restore pending tasks from database
+        await restore_pending_tasks()
     except Exception as e:
         logger.exception(f"Application startup failed, error: {e}")
     yield
