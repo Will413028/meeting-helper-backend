@@ -2,7 +2,7 @@
 
 import aiohttp
 import asyncio
-from typing import Optional
+from typing import Optional, Dict
 from src.logger import logger
 import re
 from collections import Counter
@@ -29,13 +29,92 @@ def get_connector():
     return _connector
 
 
+async def _make_ollama_request(
+    url: str,
+    method: str = "POST",
+    json_data: Optional[Dict] = None,
+    timeout: int = OLLAMA_GENERATE_TIMEOUT,
+    max_retries: int = 3,
+    retry_delay: int = 1,
+) -> tuple[Optional[Dict], Optional[str]]:
+    """
+    Shared helper to make requests to Ollama API with retry logic.
+
+    Returns:
+        tuple[Optional[Dict], Optional[str]]: (response_json, error_message)
+    """
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession(connector=get_connector()) as session:
+                request_kwargs = {
+                    "timeout": aiohttp.ClientTimeout(total=timeout),
+                }
+                if json_data:
+                    request_kwargs["json"] = json_data
+
+                async with session.request(method, url, **request_kwargs) as response:
+                    if response.status == 200:
+                        return await response.json(), None
+                    else:
+                        error_text = await response.text()
+                        msg = f"Ollama API error: {response.status} - {error_text}"
+                        logger.error(msg)
+                        return None, msg
+
+        except (aiohttp.ClientConnectionError, OSError, IOError) as e:
+            last_error = f"Network error: {e}"
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Network error on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+            logger.error(f"Network error after {max_retries} attempts: {e}")
+            return None, last_error
+
+        except (
+            aiohttp.ServerTimeoutError,
+            aiohttp.ConnectionTimeoutError,
+            aiohttp.SocketTimeoutError,
+        ) as e:
+            last_error = f"Timeout error: {e}"
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
+                )
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+                continue
+            msg = f"Ollama API request timed out after {max_retries} attempts"
+            logger.error(msg)
+            return None, msg
+
+        except aiohttp.ClientError as e:
+            msg = f"HTTP client error interacting with Ollama: {e}"
+            logger.error(msg)
+            return None, msg
+        except (ValueError, TypeError, KeyError) as e:
+            msg = f"Data error interacting with Ollama: {e}"
+            logger.error(msg)
+            return None, msg
+        except Exception as e:
+            msg = f"Unexpected error interacting with Ollama: {type(e).__name__}: {e}"
+            logger.error(msg)
+            return None, msg
+
+    return None, last_error or "Unknown error"
+
+
 async def generate_summary(
     transcription_text: str,
     language: str = "zh",
     model: str = "llama3.2:latest",
     ollama_api_url: str = f"{settings.OLLAMA_API_URL}/api/generate",
     max_tokens: int = 1500,
-) -> Optional[str]:
+) -> tuple[Optional[str], Optional[str]]:
     """
     Generate a summary of the transcription using Ollama API
 
@@ -47,7 +126,9 @@ async def generate_summary(
         max_tokens: Maximum tokens for the summary
 
     Returns:
-        The generated summary or None if failed
+        A tuple of (summary, error_message).
+        If successful, summary is str and error_message is None.
+        If failed, summary is None and error_message contains the reason.
     """
 
     # 根據語言選擇不同的 prompt 模板
@@ -145,115 +226,58 @@ async def generate_summary(
         },
     }
 
-    # Retry logic for transient network errors
-    max_retries = 3
-    retry_delay = 1
+    result, error_msg = await _make_ollama_request(
+        ollama_api_url, json_data=payload, timeout=OLLAMA_GENERATE_TIMEOUT
+    )
 
-    for attempt in range(max_retries):
-        try:
-            async with aiohttp.ClientSession(connector=get_connector()) as session:
-                async with session.post(
+    if result:
+        summary = result.get("response", "").strip()
+        if summary:
+            # Check if summary meets minimum length requirement
+            if len(summary) < 100:
+                logger.warning(
+                    f"Generated summary is too short ({len(summary)} characters), regenerating..."
+                )
+                # 根據語言準備增強的提示詞
+                length_reminder = {
+                    "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文，不要添加任何提醒。",
+                    "en": "\n\nPlease note: The summary must be at least 100 words. Please provide more detailed content. Do not add any reminders.",
+                }
+                enhanced_prompt = prompt + length_reminder.get(
+                    language.lower(), length_reminder["zh"]
+                )
+
+                enhanced_payload = {
+                    "model": model,
+                    "prompt": enhanced_prompt,
+                    "stream": False,
+                    "options": {
+                        "num_predict": max_tokens * 2,
+                        "temperature": 0.3,
+                        "top_p": 0.9,
+                        "repeat_penalty": 1.2,
+                        "stop": payload["options"].get("stop"),
+                    },
+                }
+
+                retry_result, retry_error = await _make_ollama_request(
                     ollama_api_url,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=OLLAMA_GENERATE_TIMEOUT),
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        summary = result.get("response", "").strip()
-
-                        if summary:
-                            # Check if summary meets minimum length requirement
-                            if len(summary) < 100:
-                                logger.warning(
-                                    f"Generated summary is too short ({len(summary)} characters), regenerating..."
-                                )
-                                # 根據語言準備增強的提示詞
-                                length_reminder = {
-                                    "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文，不要添加任何提醒。",
-                                    "en": "\n\nPlease note: The summary must be at least 100 words. Please provide more detailed content. Do not add any reminders.",
-                                }
-                                enhanced_prompt = prompt + length_reminder.get(
-                                    language.lower(), length_reminder["zh"]
-                                )
-
-                                enhanced_payload = {
-                                    "model": model,
-                                    "prompt": enhanced_prompt,
-                                    "stream": False,
-                                    "options": {
-                                        "num_predict": max_tokens * 2,
-                                        "temperature": 0.3,
-                                        "top_p": 0.9,
-                                        "repeat_penalty": 1.2,
-                                        "stop": payload["options"]["stop"],
-                                    },
-                                }
-                                async with session.post(
-                                    ollama_api_url,
-                                    json=enhanced_payload,
-                                    timeout=aiohttp.ClientTimeout(
-                                        total=OLLAMA_GENERATE_TIMEOUT
-                                    ),
-                                ) as retry_response:
-                                    if retry_response.status == 200:
-                                        retry_result = await retry_response.json()
-                                        summary = retry_result.get(
-                                            "response", ""
-                                        ).strip()
-
-                            logger.info(
-                                f"Successfully generated summary with {len(summary)} characters"
-                            )
-                            return summary
-                        else:
-                            logger.error("Empty summary received from Ollama")
-                            return None
-                    else:
-                        error_text = await response.text()
-                        logger.error(
-                            f"Ollama API error: {response.status} - {error_text}"
-                        )
-                        return None
-
-        except (aiohttp.ClientConnectionError, OSError, IOError) as e:
-            if attempt < max_retries - 1:
-                logger.warning(
-                    f"Network error on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
+                    json_data=enhanced_payload,
+                    timeout=OLLAMA_GENERATE_TIMEOUT,
                 )
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-                continue
-            else:
-                logger.error(f"Network error after {max_retries} attempts: {e}")
-                return None
-        except (
-            aiohttp.ServerTimeoutError,
-            aiohttp.ConnectionTimeoutError,
-            aiohttp.SocketTimeoutError,
-        ) as e:
-            if attempt < max_retries - 1:
-                logger.warning(
-                    f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
-                )
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-                continue
-            else:
-                logger.error(
-                    f"Ollama API request timed out after {max_retries} attempts"
-                )
-                return None
-        except aiohttp.ClientError as e:
-            logger.error(f"HTTP client error generating summary with Ollama: {e}")
-            return None
-        except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"Data error generating summary with Ollama: {e}")
-            return None
-        except Exception as e:
-            logger.error(
-                f"Unexpected error generating summary with Ollama: {type(e).__name__}: {e}"
+                if retry_result:
+                    summary = retry_result.get("response", "").strip()
+
+            logger.info(
+                f"Successfully generated summary with {len(summary)} characters"
             )
-            return None
+            return summary, None
+        else:
+            msg = "Empty summary received from Ollama"
+            logger.error(msg)
+            return None, msg
+    else:
+        return None, error_msg
 
 
 async def check_ollama_availability(
@@ -268,43 +292,18 @@ async def check_ollama_availability(
     Returns:
         True if Ollama is available, False otherwise
     """
-    try:
-        async with aiohttp.ClientSession(connector=get_connector()) as session:
-            async with session.get(
-                ollama_api_url,
-                timeout=aiohttp.ClientTimeout(total=OLLAMA_CHECK_TIMEOUT),
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    models = result.get("models", [])
-                    if models:
-                        logger.info(f"Ollama is available with {len(models)} models")
-                        return True
-                    else:
-                        logger.warning("Ollama is available but no models found")
-                        return False
-                else:
-                    logger.error(f"Ollama API returned status {response.status}")
-                    return False
-
-    except (
-        aiohttp.ServerTimeoutError,
-        aiohttp.ConnectionTimeoutError,
-        aiohttp.SocketTimeoutError,
-    ):
-        logger.error("Timeout checking Ollama availability")
-        return False
-    except aiohttp.ClientError as e:
-        logger.error(f"HTTP client error checking Ollama availability: {e}")
-        return False
-    except (OSError, IOError) as e:
-        logger.error(f"Network error checking Ollama availability: {e}")
-        return False
-    except Exception as e:
-        logger.error(
-            f"Unexpected error checking Ollama availability: {type(e).__name__}: {e}"
-        )
-        return False
+    result, _ = await _make_ollama_request(
+        ollama_api_url, method="GET", timeout=OLLAMA_CHECK_TIMEOUT
+    )
+    if result:
+        models = result.get("models", [])
+        if models:
+            logger.info(f"Ollama is available with {len(models)} models")
+            return True
+        else:
+            logger.warning("Ollama is available but no models found")
+            return False
+    return False
 
 
 async def _generate_fallback_tags(
@@ -408,6 +407,87 @@ async def _generate_fallback_tags(
         return ["會議記錄"]
 
 
+def _parse_tags_response(tags_text: str, max_tags: int = 8) -> Optional[list]:
+    """
+    Parse and clean tags from Ollama response text.
+
+    Args:
+        tags_text: Raw text response from Ollama
+        max_tags: Maximum number of tags to keep
+
+    Returns:
+        List of cleaned tags or None if parsing fails
+    """
+    if not tags_text:
+        return None
+
+    # Clean up the response - remove any thinking process
+    if "<think>" in tags_text:
+        if "</think>" in tags_text:
+            tags_text = tags_text.split("</think>")[-1].strip()
+        else:
+            tags_text = tags_text.split("<think>")[0].strip()
+
+    # Remove any remaining XML-like tags
+    tags_text = re.sub(r"<[^>]+>", "", tags_text).strip()
+
+    # If response contains explanations, try to extract tags
+    if "：" in tags_text or ":" in tags_text:
+        parts = re.split(r"[:：]", tags_text)
+        if len(parts) > 1:
+            tags_text = parts[-1].strip()
+
+    # Remove numbered lists
+    tags_text = re.sub(r"\d+\.\s*", "", tags_text)
+
+    # Extract only the first line if multiple lines
+    lines = tags_text.strip().split("\n")
+    tags_text = lines[0].strip()
+
+    # Remove common explanation phrases
+    explanation_patterns = [
+        r"^.*?標籤[是為有]?[:：]?\s*",
+        r"^.*?tags?[是為有]?[:：]?\s*",
+        r"^.*?關鍵詞[是為有]?[:：]?\s*",
+        r"^.*?主題[是為有]?[:：]?\s*",
+    ]
+    for pattern in explanation_patterns:
+        tags_text = re.sub(pattern, "", tags_text, flags=re.IGNORECASE)
+
+    # Parse tags from the response
+    tags = []
+
+    # Try different separators
+    potential_tags = tags_text.split(",")
+    if len(potential_tags) == 1 and "，" in tags_text:
+        potential_tags = tags_text.split("，")
+    if len(potential_tags) == 1 and "、" in tags_text:
+        potential_tags = tags_text.split("、")
+
+    for tag in potential_tags:
+        tag = tag.strip()
+        # Remove quotes
+        tag = tag.strip('"\'""')
+
+        # Skip if tag contains sentence-ending punctuation
+        if any(p in tag for p in ["。", ".", "！", "!", "？", "?"]):
+            continue
+
+        # Count words
+        if any("\u4e00" <= c <= "\u9fff" for c in tag):
+            word_count = len(tag)
+        else:
+            word_count = len(tag.split())
+
+        # Filter tags
+        if tag and not tag.startswith("<") and 1 <= word_count <= 5 and len(tag) <= 20:
+            tags.append(tag)
+
+    if tags:
+        return tags[:max_tags]
+    return None
+
+
 async def generate_tags(
     transcription_text: str,
     model: str = "llama3.2:latest",
@@ -460,155 +540,26 @@ async def generate_tags(
         },
     }
 
-    # Retry logic for transient network errors
-    max_retries = 3
-    retry_delay = 1
+    result, _ = await _make_ollama_request(
+        ollama_api_url, json_data=payload, timeout=OLLAMA_GENERATE_TIMEOUT
+    )
 
-    for attempt in range(max_retries):
-        try:
-            async with aiohttp.ClientSession(connector=get_connector()) as session:
-                async with session.post(
-                    ollama_api_url,
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=OLLAMA_GENERATE_TIMEOUT),
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        tags_text = result.get("response", "").strip()
-                        logger.debug(f"Raw Ollama response for tags: {tags_text}")
+    if result:
+        tags_text = result.get("response", "").strip()
+        logger.debug(f"Raw Ollama response for tags: {tags_text}")
 
-                        if tags_text:
-                            # Clean up the response - remove any thinking process
-                            if "<think>" in tags_text:
-                                if "</think>" in tags_text:
-                                    tags_text = tags_text.split("</think>")[-1].strip()
-                                else:
-                                    tags_text = tags_text.split("<think>")[0].strip()
-
-                            # Remove any remaining XML-like tags
-                            tags_text = re.sub(r"<[^>]+>", "", tags_text).strip()
-
-                            # If response contains explanations, try to extract tags
-                            if "：" in tags_text or ":" in tags_text:
-                                parts = re.split(r"[:：]", tags_text)
-                                if len(parts) > 1:
-                                    tags_text = parts[-1].strip()
-
-                            # Remove numbered lists
-                            tags_text = re.sub(r"\d+\.\s*", "", tags_text)
-
-                            # Extract only the first line if multiple lines
-                            lines = tags_text.strip().split("\n")
-                            tags_text = lines[0].strip()
-
-                            # Remove common explanation phrases
-                            explanation_patterns = [
-                                r"^.*?標籤[是為有]?[:：]?\s*",
-                                r"^.*?tags?[是為有]?[:：]?\s*",
-                                r"^.*?關鍵詞[是為有]?[:：]?\s*",
-                                r"^.*?主題[是為有]?[:：]?\s*",
-                            ]
-                            for pattern in explanation_patterns:
-                                tags_text = re.sub(
-                                    pattern, "", tags_text, flags=re.IGNORECASE
-                                )
-
-                            # Parse tags from the response
-                            tags = []
-
-                            # Try different separators
-                            potential_tags = tags_text.split(",")
-                            if len(potential_tags) == 1 and "，" in tags_text:
-                                potential_tags = tags_text.split("，")
-                            if len(potential_tags) == 1 and "、" in tags_text:
-                                potential_tags = tags_text.split("、")
-
-                            for tag in potential_tags:
-                                tag = tag.strip()
-                                # Remove quotes
-                                tag = tag.strip('"\'""')
-
-                                # Skip if tag contains sentence-ending punctuation
-                                if any(
-                                    p in tag for p in ["。", ".", "！", "!", "？", "?"]
-                                ):
-                                    continue
-
-                                # Count words
-                                if any("\u4e00" <= c <= "\u9fff" for c in tag):
-                                    word_count = len(tag)
-                                else:
-                                    word_count = len(tag.split())
-
-                                # Filter tags
-                                if (
-                                    tag
-                                    and not tag.startswith("<")
-                                    and 1 <= word_count <= 5
-                                    and len(tag) <= 20
-                                ):
-                                    tags.append(tag)
-
-                            # Limit to max_tags
-                            if tags:
-                                tags = tags[:max_tags]
-                                logger.info(
-                                    f"Successfully generated {len(tags)} tags: {tags}"
-                                )
-                                return tags
-                            else:
-                                logger.error(
-                                    f"No valid tags extracted from Ollama response: {tags_text[:200]}"
-                                )
-                                return await _generate_fallback_tags(
-                                    transcription_text, max_tags
-                                )
-                        else:
-                            logger.error("Empty tags response received from Ollama")
-                            return None
-                    else:
-                        error_text = await response.text()
-                        logger.error(
-                            f"Ollama API error: {response.status} - {error_text}"
-                        )
-                        return None
-
-        except (aiohttp.ClientConnectionError, OSError, IOError) as e:
-            if attempt < max_retries - 1:
-                logger.warning(
-                    f"Network error on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
-                )
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-                continue
-            else:
-                logger.error(f"Network error after {max_retries} attempts: {e}")
-                return None
-        except (
-            aiohttp.ServerTimeoutError,
-            aiohttp.ConnectionTimeoutError,
-            aiohttp.SocketTimeoutError,
-        ) as e:
-            if attempt < max_retries - 1:
-                logger.warning(
-                    f"Timeout on attempt {attempt + 1}/{max_retries}, retrying in {retry_delay}s: {e}"
-                )
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-                continue
+        if tags_text:
+            tags = _parse_tags_response(tags_text, max_tags)
+            if tags:
+                logger.info(f"Successfully generated {len(tags)} tags: {tags}")
+                return tags
             else:
                 logger.error(
-                    f"Ollama API request timed out after {max_retries} attempts"
+                    f"No valid tags extracted from Ollama response: {tags_text[:200]}"
                 )
-                return None
-        except aiohttp.ClientError as e:
-            logger.error(f"HTTP client error generating tags with Ollama: {e}")
+                return await _generate_fallback_tags(transcription_text, max_tags)
+        else:
+            logger.error("Empty tags response received from Ollama")
             return None
-        except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"Data error generating tags with Ollama: {e}")
-            return None
-        except Exception as e:
-            logger.error(
-                f"Unexpected error generating tags with Ollama: {type(e).__name__}: {e}"
-            )
-            return None
+
+    return None

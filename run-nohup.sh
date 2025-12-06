@@ -83,18 +83,21 @@ start_app() {
         esac
     done
 
+    # 防止 Python 緩衝輸出
+    export PYTHONUNBUFFERED=1
+
     # 構建命令
     if [ "$MODE" = "dev" ]; then
         if [ "$USE_HTTPS" = true ]; then
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --log-level info"
         else
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --log-level info"
         fi
     else
         if [ "$USE_HTTPS" = true ]; then
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --workers $WORKERS"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --workers $WORKERS --log-level info"
         else
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --workers $WORKERS"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --workers $WORKERS --log-level info"
         fi
     fi
 
