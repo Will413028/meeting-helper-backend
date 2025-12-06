@@ -323,8 +323,23 @@ async def process_audio(
             srt_file_path, convert_to_traditional=False, preserve_speakers=True
         )
 
-        # Generate summary and tags
-        summary, tags = await _generate_metadata(task_id, transcription_text, language)
+        # Generate summary and tags with a timeout safety net
+        # This prevents the task from being stuck in processing state if Ollama hangs
+        try:
+            summary, tags = await asyncio.wait_for(
+                _generate_metadata(task_id, transcription_text, language),
+                timeout=360,  # 6 minutes timeout (slightly larger than Ollama timeout)
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Metadata generation for task {task_id} timed out after 6 minutes"
+            )
+            summary, tags = None, None
+        except Exception as e:
+            logger.error(
+                f"Unexpected error in metadata generation for task {task_id}: {e}"
+            )
+            summary, tags = None, None
 
         # Complete the task
         await _complete_task(

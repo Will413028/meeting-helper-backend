@@ -9,7 +9,7 @@ from collections import Counter
 from src.config import settings
 
 # Configuration
-OLLAMA_GENERATE_TIMEOUT = 1200  # 20 minutes for generation
+OLLAMA_GENERATE_TIMEOUT = 300  # 5 minutes for generation
 OLLAMA_CHECK_TIMEOUT = 30  # 30 seconds for availability check
 
 # Create a shared connector with connection pooling
