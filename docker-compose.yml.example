@@ -1,5 +1,4 @@
 services:
-
   saywe_db:
     container_name: saywe_db
     image: postgres:17
@@ -12,21 +11,50 @@ services:
     ports:
       - "8700:5432"
     networks:
-      - saywe_network 
+      - saywe_network
 
-  # saywe_backend:
-  #   container_name: saywe_backend
-  #   image: gitlab.chengchitech.com.tw:8304/will/meeting-helper-backend:dev
-  #   pull_policy: always
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8701:8000"
-  #   env_file:
-  #     - ./env/.env
-  #   depends_on:
-  #     - saywe_db
-  #   networks:
-  #     - saywe_network
+  saywe_backend:
+    container_name: saywe_backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8701:8000"
+    env_file:
+      - ./env/.env
+    depends_on:
+      - saywe_db
+    networks:
+      - saywe_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  saywe_ollama:
+    image: ollama/ollama
+    container_name: saywe_ollama
+    tty: true
+    restart: always
+    ports:
+     - 11434:11434
+    volumes:
+      - ./data/ollama:/root/.ollama
+    networks:
+      - saywe_network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 networks:
   saywe_network:
