@@ -36,15 +36,9 @@ COPY alembic/ ./alembic/
 # Install Python dependencies with uv
 RUN uv sync --frozen
 
-# Install WhisperX and its dependencies separately
-# Install torch with CUDA support first - using 2.2.0 for better compatibility
-RUN uv pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
-
-# Install transformers and other dependencies needed for WhisperX diarization
-RUN uv pip install transformers==4.36.0 pyannote.audio==3.1.1
-
-# Then install WhisperX
-RUN uv pip install whisperx
+# Patch WhisperX for PyTorch 2.x compatibility
+# Fixes IndexError: tensors used as indices must be long, int, byte or bool tensors
+RUN sed -i 's/tokens.clamp(min=0)/tokens.clamp(min=0).long()/g' .venv/lib/python3.12/site-packages/whisperx/alignment.py
 
 # Create necessary directories
 RUN mkdir -p uploads
@@ -52,5 +46,12 @@ RUN mkdir -p uploads
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Make sure we use the virtualenv
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy certificates
+COPY certs/ ./certs/
+
+# Run the application directly to avoid uv run resetting dependencies
+# Use production settings: HTTPS enabled and 4 workers
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--ssl-keyfile", "certs/key.pem", "--ssl-certfile", "certs/cert.pem"]

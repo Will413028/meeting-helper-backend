@@ -13,7 +13,6 @@ ENV/
 # Project specific
 uploads/
 data/
-certs/
 *.mp3
 *.wav
 *.m4a
