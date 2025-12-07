@@ -23,23 +23,27 @@ A FastAPI backend service for audio file transcription with speaker diarization.
 ## Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd meeting-helper-backend
 ```
 
 2. Install FFmpeg:
+
 ```bash
 # Ubuntu/Debian
 sudo apt update && sudo apt install ffmpeg
 ```
 
 3. Install dependencies using uv:
+
 ```bash
 uv sync
 ```
 
 4. (Optional) Set up environment variables:
+
 ```bash
 make setup-env
 # Edit .env file if needed for custom configurations
@@ -50,6 +54,7 @@ make setup-env
 ### HTTP Mode (Default)
 
 1. Start the FastAPI server:
+
 ```bash
 make run
 # Or manually:
@@ -63,6 +68,7 @@ uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8701
 ### HTTPS Mode
 
 #### Quick Setup (Development)
+
 ```bash
 # Run the setup script
 ./setup-https.sh
@@ -79,6 +85,7 @@ make run-https
 ```
 
 #### Production Setup with Docker
+
 ```bash
 # 1. Generate or obtain SSL certificates
 # 2. Run with Docker Compose
@@ -116,6 +123,7 @@ The following settings can be modified in `src/main.py`:
 3. **Memory Issues**: Large audio files may require significant RAM. Consider using smaller Whisper models or processing files in chunks.
 
 ### API test with curl
+
 ```bash
 curl -X POST "https://114.34.174.244:8701/api/v1/transcribe?language=zh" \
   -H 'accept: application/json' \
@@ -123,9 +131,3 @@ curl -X POST "https://114.34.174.244:8701/api/v1/transcribe?language=zh" \
   -F "file=@test1.mp3" \
   | python -m json.tool
 ```
-
-curl -X POST "http://0.0.0.0/api/v1/transcribe?language=zh" \
-  -H 'accept: application/json' \
-  -H 'Content-Type: multipart/form-data' \
-  -F "file=@test1.mp3" \
-  | python -m json.tool
