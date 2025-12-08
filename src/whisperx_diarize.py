@@ -43,7 +43,8 @@ def whisperx_diarize_with_progress(
 
     command += " --diarize --min_speakers=2 --max_speakers=4"
     command += f" --chunk_size {chunk_size}"
-    command += " --compute_type float32"
+    command += " --compute_type int8"
+    command += " --batch_size 4"
 
     if hug_token:
         command += f" --hf_token {hug_token}"
