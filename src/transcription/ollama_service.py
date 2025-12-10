@@ -220,6 +220,7 @@ async def generate_summary(
     prompt = prompts.get(language.lower(), prompts["zh"])
 
     # Prepare the request payload
+    # 增強防止重複的參數設定
     payload = {
         "model": model,
         "prompt": prompt,
@@ -228,7 +229,11 @@ async def generate_summary(
             "num_predict": max_tokens,
             "temperature": 0.3,
             "top_p": 0.9,
-            "repeat_penalty": 1.2,
+            "repeat_penalty": 1.5,  # 提高重複懲罰 (從 1.2 增加到 1.5)
+            "repeat_last_n": 256,  # 檢查最後 256 個 token 來避免重複
+            "frequency_penalty": 0.5,  # 根據頻率懲罰重複 token
+            "presence_penalty": 0.3,  # 鼓勵生成新的 token
+            "num_ctx": 8192,  # 增加上下文長度以提供更好的記憶
         },
     }
 

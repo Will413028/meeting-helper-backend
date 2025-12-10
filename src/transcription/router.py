@@ -275,6 +275,11 @@ async def download_transcription_files_handler(
         )
 
     except Exception as e:
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+
         logger.error(
             f"Error creating zip file for transcription {transcription_id}: {e}"
         )

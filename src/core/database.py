@@ -12,7 +12,7 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_recycle=3600,  # Recycle connections after 1 hour
     pool_timeout=30,  # Timeout for getting connection from pool
-    echo=True,
+    echo=False,
 )
 
 
