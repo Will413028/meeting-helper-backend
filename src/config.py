@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     # Output
     # local
-    OUTPUT_DIR: str = os.getcwd() 
+    OUTPUT_DIR: str = os.getcwd()
     # docker
     # OUTPUT_DIR: str = os.path.join(os.getcwd(), "uploads")  # Default to uploads subdirectory
 

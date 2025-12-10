@@ -281,23 +281,15 @@ async def _delete_transcription_endpoint(
     transcription_id: int,
     session: AsyncSession = Depends(get_db_session),
 ):
-    transcription_response = await get_transcription_by_transcription_id(
-        session=session, transcription_id=transcription_id
-    )
-    if not transcription_response or not transcription_response.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
-        )
-
-    # We need to get the full transcription record to access file paths
-    # The get_transcription_by_transcription_id only returns selected fields
     result = await session.execute(
         select(Transcription).filter_by(transcription_id=transcription_id)
     )
     transcription = result.scalar_one_or_none()
 
     if not transcription:
-        raise HTTPException(status_code=404, detail="Transcription not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Transcription not found"
+        )
 
     files_deleted = []
     for file_path in [
@@ -309,13 +301,14 @@ async def _delete_transcription_endpoint(
                 os.remove(file_path)
                 files_deleted.append(file_path)
             except Exception as e:
-                # Log error but continue
                 print(f"Error deleting file {file_path}: {e}")
 
-    # Delete from database
     success = await delete_transcription_by_id(session, transcription_id)
     if not success:
-        raise HTTPException(status_code=500, detail="Failed to delete transcription")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete transcription",
+        )
 
     response = {
         "message": "Transcription deleted successfully",
@@ -404,7 +397,6 @@ async def _download_transcription_files(
         )
 
     except Exception as e:
-        # Clean up on error
         if os.path.exists(zip_path):
             os.remove(zip_path)
         if os.path.exists(temp_dir):

@@ -172,7 +172,6 @@ async def process_audio(
         # Check if task was cancelled during processing
         task = task_manager.get_task(task_id)
         if task and task.status == TaskStatus.CANCELLED:
-            logger.info(f"Task {task_id} was cancelled during processing")
             await _cleanup_cancelled_task(task_id, audio_path)
             return
 
@@ -184,7 +183,6 @@ async def process_audio(
             raise Exception("Failed to generate SRT file")
 
         # Convert SRT to simple format (remove sequence numbers and end times)
-        logger.info(f"Converting SRT to simple format for task {task_id}")
         if convert_srt_to_simple_format(srt_file_path):
             logger.info("Successfully converted SRT to simple format")
         else:
@@ -194,9 +192,6 @@ async def process_audio(
 
         # Convert SRT file: both speaker labels and text to traditional Chinese
         if language == "zh":  # Only convert for Chinese language
-            logger.info(
-                f"Converting SRT file (speaker labels and text) to traditional Chinese for task {task_id}"
-            )
             # This will convert both speaker labels ([SPEAKER_XX]: to 講者 XX:) and text to traditional Chinese
             if convert_srt_file_to_traditional(srt_file_path, convert_speakers=True):
                 logger.info(
@@ -219,23 +214,16 @@ async def process_audio(
             try:
                 # Check if Ollama is available
                 if await check_ollama_availability():
-                    # Generate summary
-                    logger.info(f"Generating summary for task {task_id}")
                     summary = await generate_summary(transcription_text, language)
                     if summary:
-                        logger.info(
-                            f"Successfully generated summary for task {task_id}"
-                        )
+                        pass
                     else:
                         logger.warning(f"Failed to generate summary for task {task_id}")
 
                     # Generate tags
-                    logger.info(f"Generating tags for task {task_id}")
                     tags = await generate_tags(transcription_text)
                     if tags:
-                        logger.info(
-                            f"Successfully generated {len(tags)} tags for task {task_id}"
-                        )
+                        pass
                     else:
                         logger.warning(f"Failed to generate tags for task {task_id}")
                 else:
@@ -244,7 +232,6 @@ async def process_audio(
                     )
             except Exception as e:
                 logger.error(f"Error generating summary/tags for task {task_id}: {e}")
-                # Continue without summary/tags - don't fail the entire transcription
 
         # Complete the task
         result = {
@@ -287,7 +274,6 @@ async def process_audio(
                 transcription = result.scalar_one_or_none()
 
                 if transcription and transcription.transcription_id:
-                    logger.info(f"Initializing transcript segments for task {task_id}")
                     segments_initialized = await initialize_segments_from_srt(
                         session, transcription.transcription_id
                     )

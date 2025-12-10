@@ -1,3 +1,4 @@
+import logging
 import time
 import os
 from contextlib import asynccontextmanager
@@ -15,8 +16,6 @@ from src.config import settings
 from src.constants import DEFAULT_ERROR_RESPONSE
 from src.logger import logger
 from src.database import engine
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:

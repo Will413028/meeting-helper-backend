@@ -210,9 +210,6 @@ async def generate_summary(
                                             "response", ""
                                         ).strip()
 
-                            logger.info(
-                                f"Successfully generated summary with {len(summary)} characters"
-                            )
                             return summary
                         else:
                             logger.error("Empty summary received from Ollama")
@@ -287,7 +284,6 @@ async def check_ollama_availability(
                     result = await response.json()
                     models = result.get("models", [])
                     if models:
-                        logger.info(f"Ollama is available with {len(models)} models")
                         return True
                     else:
                         logger.warning("Ollama is available but no models found")
@@ -561,9 +557,6 @@ async def generate_tags(
                             # Limit to max_tags
                             if tags:
                                 tags = tags[:max_tags]
-                                logger.info(
-                                    f"Successfully generated {len(tags)} tags: {tags}"
-                                )
                                 return tags
                             else:
                                 logger.error(

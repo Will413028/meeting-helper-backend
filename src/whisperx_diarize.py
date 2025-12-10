@@ -44,7 +44,7 @@ def whisperx_diarize_with_progress(
     command += " --diarize --min_speakers=2 --max_speakers=4"
     command += f" --chunk_size {chunk_size}"
     command += " --compute_type int8"
-    command += " --batch_size 4"
+    command += " --batch_size 2"
 
     if hug_token:
         command += f" --hf_token {hug_token}"
@@ -60,9 +60,6 @@ def whisperx_diarize_with_progress(
     command += " --condition_on_previous_text False"
     command += f" --output_dir '{output_dir}'"
     command += " --output_format srt"
-    command += " --print_progress True"
-
-    print(f"Executing command: {command}")
 
     # Execute command with real-time output capture
     process = subprocess.Popen(

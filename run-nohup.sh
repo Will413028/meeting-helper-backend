@@ -61,7 +61,7 @@ start_app() {
     # 解析參數
     MODE="dev"
     USE_HTTPS=false
-    WORKERS=4
+    WORKERS=1
     
     while [[ $# -gt 0 ]]; do
         case $1 in
