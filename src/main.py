@@ -4,7 +4,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
 
 from src.auth.router import router as auth_router
 from src.transcription.router import router as transcription_router
@@ -12,15 +12,20 @@ from src.segment.router import router as segment_router
 from src.group.router import router as group_router
 from src.user.router import router as user_router
 from src.setting.router import router as setting_router
-from src.config import settings
-from src.constants import DEFAULT_ERROR_RESPONSE
-from src.logger import logger
-from src.database import engine
+from src.core.config import settings
+from src.core.constants import DEFAULT_ERROR_RESPONSE
+from src.core.logger import logger
+from src.core.database import engine
+from src.transcription.background_processor import restore_pending_tasks
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         logger.info("Starting application")
         os.makedirs(settings.OUTPUT_DIR, exist_ok=True)
+        # Restore pending tasks from database
+        await restore_pending_tasks()
     except Exception as e:
         logger.exception(f"Application startup failed, error: {e}")
     yield
@@ -52,6 +57,14 @@ async def add_process_time_header(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return ORJSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
 
 
 @app.exception_handler(Exception)

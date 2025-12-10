@@ -27,9 +27,8 @@ from src.group.service import (
     create_uncategorized_group,
     get_simple_groups,
 )
-from src.database import get_db_session
-from src.logger import logger
-from src.schemas import (
+from src.core.database import get_db_session
+from src.core.schemas import (
     DetailResponse,
     PaginatedDataResponse,
     ListDataResponse,
@@ -44,173 +43,92 @@ router = APIRouter(
     "/v1/groups/detail",
     response_model=PaginatedDataResponse[GetGroupResponse],
 )
-async def _get_groups(
+async def get_groups_handler(
     query_params: Annotated[GetGroupsParams, Query()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        return await get_groups(
-            session=session,
-            name=query_params.name,
-            page=query_params.page,
-            page_size=query_params.page_size,
-        )
-
-    except HTTPException as exc:
-        logger.error("get_groups error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("get_groups error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    return await get_groups(
+        session=session,
+        name=query_params.name,
+        page=query_params.page,
+        page_size=query_params.page_size,
+    )
 
 
 @router.get(
     "/v1/groups/simple",
     response_model=ListDataResponse[GetSimpleGroupResponse],
 )
-async def _get_simple_groups(
+async def get_simple_groups_handler(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        return await get_simple_groups(
-            session=session,
-        )
-
-    except HTTPException as exc:
-        logger.error("get_groups error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("get_groups error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    return await get_simple_groups(
+        session=session,
+    )
 
 
 @router.post(
     "/v1/groups/admin",
     response_model=DetailResponse,
 )
-async def _create_admin_group(
+async def create_admin_group_handler(
     group_data: Annotated[CreateGroupRequest, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        await create_admin_group(session=session, group_data=group_data)
-
-        return DetailResponse(detail="Create group successfully")
-
-    except HTTPException as exc:
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    await create_admin_group(session=session, group_data=group_data)
+    return DetailResponse(detail="Create group successfully")
 
 
 @router.post(
     "/v1/groups",
     response_model=DetailResponse,
 )
-async def _create_group(
+async def create_group_handler(
     group_data: Annotated[CreateGroupRequest, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        db_group = await get_group_by_name(session=session, name=group_data.name)
+    db_group = await get_group_by_name(session=session, name=group_data.name)
 
-        if db_group:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Group already exists"
-            )
-
-        await create_group(session=session, group_data=group_data)
-
-        return DetailResponse(detail="Create group successfully")
-
-    except HTTPException as exc:
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.exception(exc)
+    if db_group:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Group already exists"
+        )
+
+    await create_group(session=session, group_data=group_data)
+    return DetailResponse(detail="Create group successfully")
 
 
 @router.put(
     "/v1/groups",
     response_model=DetailResponse,
 )
-async def _update_groups(
+async def update_groups_handler(
     groups_data: Annotated[UpdateGroupsRequest, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        await update_groups(groups_data=groups_data, session=session)
-
-        return DetailResponse(detail="User password reset successfully")
-
-    except HTTPException as exc:
-        logger.error("Update group error")
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.error("Update group error")
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    await update_groups(groups_data=groups_data, session=session)
+    return DetailResponse(detail="User password reset successfully")
 
 
 @router.delete(
     "/v1/groups",
     response_model=DetailResponse,
 )
-async def _delete_groups(
+async def delete_groups_handler(
     group_ids: Annotated[list[int], Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        await delete_groups(session=session, group_ids=group_ids)
-
-        return DetailResponse(detail="Groups moved to 未分類 successfully")
-
-    except HTTPException as exc:
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    await delete_groups(session=session, group_ids=group_ids)
+    return DetailResponse(detail="Groups moved to 未分類 successfully")
 
 
 @router.post(
     "/v1/groups/uncategorized",
     response_model=DetailResponse,
 )
-async def _create_uncategorized_group(
+async def create_uncategorized_group_handler(
     group_data: Annotated[CreateGroupRequest, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ):
-    try:
-        await create_uncategorized_group(session=session, group_data=group_data)
-
-        return DetailResponse(detail="Create group successfully")
-
-    except HTTPException as exc:
-        logger.exception(exc)
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-    except Exception as exc:
-        logger.exception(exc)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+    await create_uncategorized_group(session=session, group_data=group_data)
+    return DetailResponse(detail="Create group successfully")

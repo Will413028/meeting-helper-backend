@@ -12,7 +12,7 @@ from src.segment.schemas import (
     TranscriptSegmentUpdate,
 )
 from src.transcription.srt_utils import parse_srt_with_speakers
-from src.logger import logger
+from src.core.logger import logger
 
 
 def time_to_seconds(time_str: str) -> float:

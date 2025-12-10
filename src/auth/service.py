@@ -10,7 +10,7 @@ from src.auth.schemas import (
     GetUserByAccountResponse,
 )
 from src.auth.utils import get_password_hash, verify_password
-from src.config import settings
+from src.core.config import settings
 from src.models import User, Group
 
 

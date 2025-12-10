@@ -2,9 +2,9 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.database import get_db_session
-from src.logger import logger
-from src.schemas import DataResponse
+from src.core.database import get_db_session
+from src.core.logger import logger
+from src.core.schemas import DataResponse
 from src.segment.schemas import (
     TranscriptSegmentsResponse,
     TranscriptSegmentResponse,

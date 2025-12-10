@@ -83,6 +83,9 @@ start_app() {
         esac
     done
 
+    # 防止 Python 緩衝輸出
+    export PYTHONUNBUFFERED=1
+
     # 構建命令
     if [ "$MODE" = "dev" ]; then
         if [ "$USE_HTTPS" = true ]; then

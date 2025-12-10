@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Optional
-import re
+
 import os
 from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.constants import Role
-from src.schemas import DataResponse, PaginatedDataResponse
+from src.core.constants import Role
+from src.core.schemas import DataResponse, PaginatedDataResponse
 from src.models import Transcription, Speaker, TranscriptSegment, User
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
@@ -13,7 +13,7 @@ from src.transcription.schemas import (
     GetTranscriptionResponse,
     UpdateTranscriptionParams,
 )
-from src.logger import logger
+from src.core.logger import logger
 
 
 async def create_transcription(
@@ -179,6 +179,52 @@ async def get_transcriptions(
     )
 
 
+async def delete_transcription_service(
+    session: AsyncSession, transcription_id: int
+) -> dict:
+    """
+    Delete transcription and associated files.
+    Returns a dictionary with result details.
+    """
+    # Get the full transcription record to access file paths
+    result = await session.execute(
+        select(Transcription).filter_by(transcription_id=transcription_id)
+    )
+    transcription = result.scalar_one_or_none()
+
+    if not transcription:
+        # Return False or raise exception - handled by caller checking result
+        return {"success": False, "error": "Transcription not found"}
+
+    files_deleted = []
+    # Try to delete files
+    for file_path in [
+        transcription.audio_path,
+        transcription.srt_path,
+    ]:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                files_deleted.append(file_path)
+            except Exception as e:
+                # Log error but continue
+                logger.error(f"Error deleting file {file_path}: {e}")
+
+    # Delete from database (this also cascades to speakers/segments manually or via FK)
+    # Re-using the existing logic but we can inline it here or call the existing function
+    # calling existing function to avoid code duplication if it does complex stuff
+    success = await delete_transcription_by_id(session, transcription_id)
+
+    if not success:
+        return {"success": False, "error": "Failed to delete database record"}
+
+    return {
+        "success": True,
+        "transcription_id": transcription_id,
+        "files_deleted": files_deleted,
+    }
+
+
 async def delete_transcription_by_id(
     session: AsyncSession, transcription_id: int
 ) -> bool:
@@ -221,6 +267,57 @@ async def cleanup_old_transcriptions(session: AsyncSession, days: int = 30) -> i
     return result.rowcount
 
 
+async def update_transcription_speakers(
+    session: AsyncSession,
+    transcription_id: int,
+    speakers: list,
+) -> None:
+    """Handle updating speaker names and triggering side effects (SRT/Summary updates)"""
+    # Get current speakers to track name changes
+    speaker_name_changes = []
+
+    for speaker_info in speakers:
+        # Get current speaker info
+        result = await session.execute(
+            select(Speaker).filter_by(
+                speaker_id=speaker_info.speaker_id,
+                transcription_id=transcription_id,
+            )
+        )
+        current_speaker = result.scalar_one_or_none()
+
+        if current_speaker:
+            old_name = current_speaker.display_name
+            new_name = speaker_info.display_name
+
+            # Track if name actually changed
+            if old_name != new_name:
+                speaker_name_changes.append((old_name, new_name))
+
+            # Update speaker
+            speaker_update_query = (
+                update(Speaker)
+                .where(Speaker.speaker_id == speaker_info.speaker_id)
+                .where(Speaker.transcription_id == transcription_id)
+                .values(display_name=new_name)
+            )
+            await session.execute(speaker_update_query)
+
+    # Update summary if any speaker names changed
+    if speaker_name_changes:
+        await update_summary_speaker_names(
+            session=session,
+            transcription_id=transcription_id,
+            name_changes=speaker_name_changes,
+        )
+        # Update SRT file
+        await update_srt_speaker_names(
+            session=session,
+            transcription_id=transcription_id,
+            name_changes=speaker_name_changes,
+        )
+
+
 async def update_transcription_api(
     session: AsyncSession,
     transcription_id: int,
@@ -246,49 +343,12 @@ async def update_transcription_api(
 
         # Update speaker display names if provided
         if transcription_data.speakers is not None:
-            # Get current speakers to track name changes
-            speaker_name_changes = []
+            await update_transcription_speakers(
+                session=session,
+                transcription_id=transcription_id,
+                speakers=transcription_data.speakers,
+            )
 
-            for speaker_info in transcription_data.speakers:
-                # Get current speaker info
-                result = await session.execute(
-                    select(Speaker).filter_by(
-                        speaker_id=speaker_info.speaker_id,
-                        transcription_id=transcription_id,
-                    )
-                )
-                current_speaker = result.scalar_one_or_none()
-
-                if current_speaker:
-                    old_name = current_speaker.display_name
-                    new_name = speaker_info.display_name
-
-                    # Track if name actually changed
-                    if old_name != new_name:
-                        speaker_name_changes.append((old_name, new_name))
-
-                    # Update speaker
-                    speaker_update_query = (
-                        update(Speaker)
-                        .where(Speaker.speaker_id == speaker_info.speaker_id)
-                        .where(Speaker.transcription_id == transcription_id)
-                        .values(display_name=new_name)
-                    )
-                    await session.execute(speaker_update_query)
-
-            # Update summary if any speaker names changed
-            if speaker_name_changes:
-                await update_summary_speaker_names(
-                    session=session,
-                    transcription_id=transcription_id,
-                    name_changes=speaker_name_changes,
-                )
-                # Update SRT file
-                await update_srt_speaker_names(
-                    session=session,
-                    transcription_id=transcription_id,
-                    name_changes=speaker_name_changes,
-                )
         await session.commit()
 
     except Exception as e:
@@ -312,38 +372,11 @@ async def update_summary_speaker_names(
     if not transcription or not transcription.summary:
         return
 
-    updated_summary = transcription.summary
+    from src.transcription.text_utils import replace_speaker_names
 
-    # Apply all name changes
-    for old_name, new_name in name_changes:
-        logger.info(f"Attempting to replace '{old_name}' with '{new_name}'")
-
-        # Pattern 1: Match exact name with word boundaries (for English/alphanumeric)
-        pattern1 = r"\b" + re.escape(old_name) + r"\b"
-
-        # Pattern 2: Match Chinese format like "講者4" or other CJK characters
-        # This pattern looks for the name followed by common Chinese punctuation or whitespace
-        pattern2 = re.escape(old_name) + r"(?=[\s，。、：；！？）」』]|$)"
-
-        # Pattern 3: Match name preceded by common Chinese punctuation
-        pattern3 = r"(?<=[\s，。、：；！？（「『])" + re.escape(old_name)
-
-        # Try all patterns
-        temp_summary = updated_summary
-
-        # First try pattern 1 (word boundaries)
-        updated_summary = re.sub(pattern1, new_name, updated_summary)
-
-        # Then try pattern 2 (followed by Chinese punctuation)
-        updated_summary = re.sub(pattern2, new_name, updated_summary)
-
-        # Then try pattern 3 (preceded by Chinese punctuation)
-        updated_summary = re.sub(pattern3, new_name, updated_summary)
-
-        if temp_summary != updated_summary:
-            logger.info(f"Successfully replaced '{old_name}' with '{new_name}'")
-        else:
-            logger.warning(f"No matches found for '{old_name}' in summary")
+    updated_summary = replace_speaker_names(
+        content=transcription.summary, name_changes=name_changes, context_name="summary"
+    )
 
     # Only update if there were actual changes
     if updated_summary != transcription.summary:
@@ -396,48 +429,18 @@ async def update_srt_speaker_names(
         with open(srt_path, "r", encoding="utf-8") as f:
             srt_content = f.read()
 
-        original_content = srt_content
-        updated_srt = srt_content
+        from src.transcription.text_utils import replace_speaker_names
 
-        # Apply all name changes
-        for old_name, new_name in name_changes:
-            logger.info(f"Attempting to replace '{old_name}' with '{new_name}' in SRT")
-
-            # Pattern 1: Match exact name with word boundaries (for English/alphanumeric)
-            pattern1 = r"\b" + re.escape(old_name) + r"\b"
-
-            # Pattern 2: Match Chinese format like "講者4" or other CJK characters
-            # This pattern looks for the name followed by common Chinese punctuation or whitespace
-            pattern2 = re.escape(old_name) + r"(?=[\s，。、：；！？）」』]|$)"
-
-            # Pattern 3: Match name preceded by common Chinese punctuation
-            pattern3 = r"(?<=[\s，。、：；！？（「『])" + re.escape(old_name)
-
-            # Try all patterns
-            temp_srt = updated_srt
-
-            # First try pattern 1 (word boundaries)
-            updated_srt = re.sub(pattern1, new_name, updated_srt)
-
-            # Then try pattern 2 (followed by Chinese punctuation)
-            updated_srt = re.sub(pattern2, new_name, updated_srt)
-
-            # Then try pattern 3 (preceded by Chinese punctuation)
-            updated_srt = re.sub(pattern3, new_name, updated_srt)
-
-            if temp_srt != updated_srt:
-                logger.info(
-                    f"Successfully replaced '{old_name}' with '{new_name}' in SRT"
-                )
-            else:
-                logger.warning(f"No matches found for '{old_name}' in SRT file")
+        updated_srt = replace_speaker_names(
+            content=srt_content, name_changes=name_changes, context_name="SRT"
+        )
 
         # Only write back if there were actual changes
-        if updated_srt != original_content:
+        if updated_srt != srt_content:
             # Create backup before modifying
             backup_path = srt_path + ".backup"
             with open(backup_path, "w", encoding="utf-8") as f:
-                f.write(original_content)
+                f.write(srt_content)
 
             # Write updated content
             with open(srt_path, "w", encoding="utf-8") as f:
@@ -448,7 +451,7 @@ async def update_srt_speaker_names(
                 f"Changes made: {len(name_changes)} speaker name(s)"
             )
             logger.info(f"Backup created at: {backup_path}")
-            logger.debug(f"Original SRT snippet: {original_content[:200]}")
+            logger.debug(f"Original SRT snippet: {srt_content[:200]}")
             logger.debug(f"Updated SRT snippet: {updated_srt[:200]}")
 
             # Update transcription_text in database if needed
