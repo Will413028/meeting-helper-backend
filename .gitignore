@@ -149,6 +149,7 @@ uploads/
 *.ogg
 *.mp4
 *.webm
+*.srt
 
 # SSL/TLS certificates
 certs/
