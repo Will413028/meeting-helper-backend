@@ -7,10 +7,7 @@ class Settings(BaseSettings):
     HUG_TOKEN: str
 
     # Output
-    # local
-    OUTPUT_DIR: str = os.getcwd()
-    # docker
-    # OUTPUT_DIR: str = os.path.join(os.getcwd(), "uploads")  # Default to uploads subdirectory
+    OUTPUT_DIR: str = os.path.join(os.getcwd(), "uploads")  # Default to uploads subdirectory
 
     # Auth
     SECRET_KEY: str

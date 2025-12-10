@@ -41,7 +41,7 @@ RUN uv sync --frozen
 RUN sed -i 's/tokens.clamp(min=0)/tokens.clamp(min=0).long()/g' .venv/lib/python3.12/site-packages/whisperx/alignment.py
 
 # Create necessary directories
-RUN mkdir -p uploads
+RUN mkdir -p uploads logs
 
 # Expose port
 EXPOSE 8000
@@ -53,5 +53,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY certs/ ./certs/
 
 # Run the application directly to avoid uv run resetting dependencies
-# Use production settings: HTTPS enabled and 4 workers
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--ssl-keyfile", "certs/key.pem", "--ssl-certfile", "certs/cert.pem"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--ssl-keyfile", "certs/key.pem", "--ssl-certfile", "certs/cert.pem", "--no-access-log"]
