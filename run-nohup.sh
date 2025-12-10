@@ -86,15 +86,15 @@ start_app() {
     # 構建命令
     if [ "$MODE" = "dev" ]; then
         if [ "$USE_HTTPS" = true ]; then
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --no-access-log"
         else
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --no-access-log"
         fi
     else
         if [ "$USE_HTTPS" = true ]; then
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --workers $WORKERS"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --ssl-keyfile=./certs/key.pem --ssl-certfile=./certs/cert.pem --workers $WORKERS --no-access-log"
         else
-            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --workers $WORKERS"
+            CMD="uv run uvicorn src.main:app --host 0.0.0.0 --port 8701 --workers $WORKERS --no-access-log"
         fi
     fi
 
