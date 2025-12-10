@@ -9,6 +9,25 @@ from mutagen.flac import FLAC
 from mutagen.oggvorbis import OggVorbis
 from src.core.logger import logger
 
+# Supported audio file extensions
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".flac", ".ogg", ".webm", ".aac"}
+
+
+def is_supported_audio_file(filename: str) -> bool:
+    """
+    Check if a filename has a supported audio file extension.
+    
+    Args:
+        filename: The name of the file to check
+        
+    Returns:
+        True if the file extension is supported, False otherwise
+    """
+    if not filename:
+        return False
+    ext = os.path.splitext(filename)[1].lower()
+    return ext in ALLOWED_AUDIO_EXTENSIONS
+
 
 def get_audio_duration(file_path: str) -> Optional[int]:
     """
