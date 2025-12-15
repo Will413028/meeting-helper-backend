@@ -11,7 +11,8 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     curl \
@@ -27,14 +28,21 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy project files
+# Copy dependencies first to leverage cache
 COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+# Copy project files
 COPY src/ ./src/
 COPY alembic.ini ./
 COPY alembic/ ./alembic/
 
-# Install Python dependencies with uv
-RUN uv sync --frozen
+# Install project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
 # Patch WhisperX for PyTorch 2.x compatibility
 # Fixes IndexError: tensors used as indices must be long, int, byte or bool tensors

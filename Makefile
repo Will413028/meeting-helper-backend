@@ -17,10 +17,6 @@ lint:
 	uv run ruff format
 	uv run ruff check --fix
 
-.PHONY: test
-test:
-	uv run python test_api.py
-
 .PHONY: install
 install:
 	uv sync
