@@ -6,7 +6,7 @@ from sqlalchemy import insert, select, delete, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.constants import Role
 from src.core.schemas import DataResponse, PaginatedDataResponse
-from src.models import Transcription, Speaker, TranscriptSegment, User
+from src.models import Transcription, Speaker, TranscriptSegment, User, Group
 from src.transcription.schemas import (
     GetTranscriptionByTranscriptionIdResponse,
     CreateTranscriptionParams,
@@ -141,19 +141,16 @@ async def get_transcriptions(
     if name:
         query = query.filter(Transcription.transcription_title.like(f"%{name}%"))
 
-    # TODO: 修改不要用 hardcode
-    # 如果不是 group_id == 1（admin）,加上 group_id 過濾
-    if user.group_id != 1:
-        query = query.where(Transcription.group_id == user.group_id)
-
+    logger.info(f"User role: {user.role}")
     # 根據使用者角色過濾資料
-    if user.role == Role.SUPER_ADMIN:
+    if user.role == Role.SUPER_ADMIN.value:
         # Super Admin 可以看到所有資料，不需要額外過濾
         pass
-    elif user.role == Role.ADMIN:
+    elif user.role == Role.ADMIN.value:
         # Admin 可以看到自己組別和一般使用者的資料，但不能看到 Super Admin 的資料
-        query = query.join(User, Transcription.user_id == User.user_id).where(
-            User.role != Role.SUPER_ADMIN
+        query = (
+            query.join(Group, Transcription.group_id == Group.group_id)
+            .where(Group.role != Role.SUPER_ADMIN.value)
         )
     else:  # UserRole.USER
         # 一般使用者只能看到自己組別內的資料

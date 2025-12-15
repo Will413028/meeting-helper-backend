@@ -252,6 +252,7 @@ async def download_transcription_files_handler(
             status_code=status.HTTP_404_NOT_FOUND, detail="SRT file not found"
         )
 
+    zip_path = None
     try:
         # Use service to create zip without blocking
         zip_path = await run_in_threadpool(
@@ -275,10 +276,13 @@ async def download_transcription_files_handler(
         )
 
     except Exception as e:
-        if os.path.exists(zip_path):
+        if zip_path and os.path.exists(zip_path):
             os.remove(zip_path)
-        if os.path.exists(temp_dir):
-            os.rmdir(temp_dir)
+            # Try to remove the directory as well since it was created by mkdtemp
+            try:
+                os.rmdir(os.path.dirname(zip_path))
+            except OSError:
+                pass
 
         logger.error(
             f"Error creating zip file for transcription {transcription_id}: {e}"

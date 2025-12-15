@@ -3,7 +3,9 @@ import os
 import structlog
 
 # Ensure logs directory exists
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
+LOG_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs"
+)
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # Log file paths
@@ -25,8 +27,7 @@ console_handler.setLevel(logging.INFO)
 
 # Create formatter
 formatter = logging.Formatter(
-    "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
 )
 file_handler.setFormatter(formatter)
 error_file_handler.setFormatter(formatter)
