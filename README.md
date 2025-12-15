@@ -80,9 +80,8 @@ make run-https
 
 #### Production Setup with Docker
 ```bash
-# 1. Generate or obtain SSL certificates
 # 2. Run with Docker Compose
-docker-compose -f docker-compose.https.yml up -d
+docker compose up --build 
 ```
 
 For detailed HTTPS setup instructions, see [HTTPS_SETUP.md](HTTPS_SETUP.md)

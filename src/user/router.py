@@ -40,7 +40,7 @@ router = APIRouter(
 )
 
 
-@router.get("/users/list", response_model=ListDataResponse[GetListUserResponse])
+@router.get("/v1/users/list", response_model=ListDataResponse[GetListUserResponse])
 async def get_list_users_handler(
     group_id: Annotated[int, Query()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -51,7 +51,7 @@ async def get_list_users_handler(
     )
 
 
-@router.get("/users", response_model=PaginatedDataResponse[GetUserResponse])
+@router.get("/v1/users", response_model=PaginatedDataResponse[GetUserResponse])
 async def get_users_handler(
     query_params: Annotated[GetUsersParams, Query()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -64,7 +64,7 @@ async def get_users_handler(
     )
 
 
-@router.get("/users/{user_id}", response_model=DataResponse[GetUserDetailResponse])
+@router.get("/v1/users/{user_id}", response_model=DataResponse[GetUserDetailResponse])
 async def get_user_detail_handler(
     user_id: Annotated[int, Path()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -75,7 +75,7 @@ async def get_user_detail_handler(
     )
 
 
-@router.put("/users/groups")
+@router.put("/v1/users/groups")
 async def update_users_groups_handler(
     users_data: Annotated[UpdateUsersGroupRequest, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -84,7 +84,7 @@ async def update_users_groups_handler(
     return DetailResponse(detail="Updated successfully")
 
 
-@router.put("/users/{user_id}")
+@router.put("/v1/users/{user_id}")
 async def update_users_handler(
     user_id: Annotated[int, Path()],
     user_data: Annotated[UpdateUserRequest, Body()],
@@ -94,7 +94,7 @@ async def update_users_handler(
     return DetailResponse(detail="Updated successfully")
 
 
-@router.delete("/users/{user_id}")
+@router.delete("/v1/users/{user_id}")
 async def delete_user_by_id_handler(
     user_id: Annotated[int, Path()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
@@ -103,7 +103,7 @@ async def delete_user_by_id_handler(
     return DetailResponse(detail="Deleted successfully")
 
 
-@router.delete("/users")
+@router.delete("/v1/users")
 async def delete_users_handler(
     user_ids: Annotated[DeleteUserRequest, Body()],
     session: Annotated[AsyncSession, Depends(get_db_session)],
