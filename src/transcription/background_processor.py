@@ -406,9 +406,13 @@ async def _run_whisperx_with_cancellation(
     try:
         await loop.run_in_executor(None, run_with_cancellation_check)
     except Exception:
-        # This is expected for cancelled tasks
-        logger.info(f"Task {task_id} execution stopped due to cancellation")
-        raise
+        # Check if it was really cancelled
+        task = task_manager.get_task(task_id)
+        if task and task.status == TaskStatus.CANCELLED:
+            logger.info(f"Task {task_id} execution stopped due to cancellation")
+        else:
+            # Re-raise strictly if not cancelled
+            raise
 
 
 async def _cleanup_cancelled_task(task_id: str, audio_path: str):
