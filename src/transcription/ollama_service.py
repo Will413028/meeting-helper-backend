@@ -7,6 +7,7 @@ from src.core.logger import logger
 import re
 from collections import Counter
 from src.core.config import settings
+import opencc
 
 # Configuration
 OLLAMA_GENERATE_TIMEOUT = 300  # 5 minutes for generation
@@ -278,6 +279,15 @@ async def generate_summary(
                 )
                 if retry_result:
                     summary = retry_result.get("response", "").strip()
+
+            # Enforce Traditional Chinese if requested
+            if language.lower() == "zh" and summary:
+                try:
+                    converter = opencc.OpenCC("s2twp")
+                    summary = converter.convert(summary)
+                    logger.info("Converted summary to Traditional Chinese")
+                except Exception as e:
+                    logger.warning(f"Failed to convert summary to Traditional Chinese: {e}")
 
             logger.info(
                 f"Successfully generated summary with {len(summary)} characters"
