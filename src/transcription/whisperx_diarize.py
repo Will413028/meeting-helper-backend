@@ -101,6 +101,10 @@ def whisperx_diarize_with_progress(
 
     current_step = "loading_model"
 
+    # Keep track of recent output for error reporting
+    recent_output = []
+    MAX_RECENT_LINES = 20
+
     try:
         # Read output line by line
         for line in iter(process.stdout.readline, ""):
@@ -110,6 +114,11 @@ def whisperx_diarize_with_progress(
             line = line.strip()
             if not line:
                 continue
+
+            # Store recent output
+            recent_output.append(line)
+            if len(recent_output) > MAX_RECENT_LINES:
+                recent_output.pop(0)
 
             print(f"WhisperX: {line}")
 
@@ -187,8 +196,9 @@ def whisperx_diarize_with_progress(
             if process.returncode == -signal.SIGTERM:
                 raise Exception("WhisperX process was terminated")
             else:
+                error_details = "\n".join(recent_output)
                 raise Exception(
-                    f"WhisperX failed with return code {process.returncode}"
+                    f"WhisperX failed with return code {process.returncode}\nRecent output:\n{error_details}"
                 )
 
         # Final progress update
