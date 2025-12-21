@@ -1,0 +1,39 @@
+[project]
+name = "meeting-helper-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi[standard]>=0.115.12",
+    "python-multipart>=0.0.6",
+    "pydub>=0.25.1",
+    "whisperx==3.3.4",
+    "requests>=2.32.3",
+    "pydantic-settings>=2.9.1",
+    "sqlalchemy>=2.0.41",
+    "alembic>=1.16.1",
+    "bcrypt>=4.3.0",
+    "structlog>=25.4.0",
+    "rich>=14.0.0",
+    "better-exceptions>=0.3.3",
+    "orjson>=3.10.18",
+    "asyncpg>=0.30.0",
+    "pyjwt>=2.10.1",
+    "aiofiles>=24.1.0",
+    "mutagen>=1.47.0",
+    "opencc-python-reimplemented>=0.1.7",
+    "torch==2.7.1+cu128",
+    "torchaudio==2.7.1+cu128",
+    "torchvision==0.22.1+cu128",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128" }]
+torchaudio = [{ index = "pytorch-cu128" }]
+torchvision = [{ index = "pytorch-cu128" }]
