@@ -55,6 +55,7 @@ class Transcription(Base):
     speaks: Mapped[dict] = mapped_column(JSON, nullable=True)
     audio_duration: Mapped[float] = mapped_column(nullable=True)
     summary: Mapped[str] = mapped_column(TEXT, nullable=True)
+    model: Mapped[str] = mapped_column(String(50), nullable=True)
     transcription_text: Mapped[str] = mapped_column(TEXT, nullable=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.group_id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
