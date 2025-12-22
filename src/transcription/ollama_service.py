@@ -141,10 +141,14 @@ async def generate_summary(
         "zh": f"""/nothink
 你是專業的會議記錄摘要助手。請嚴格按照以下 Markdown 格式輸出會議摘要。
 
+重要規則：
+- 只能根據逐字稿內容進行摘要，禁止添加任何逐字稿中沒有提到的資訊
+- 如果逐字稿中沒有提到某個區段的內容，請直接省略該區段
+- 不要猜測或編造任何資訊
+
 輸出格式要求：
 - 必須使用繁體中文
 - 必須使用 Markdown 標題 (##) 格式
-- 摘要總字數至少 500 字
 - 歸納總結，不要逐字複述對話
 
 請直接輸出以下格式的摘要（不要輸出其他內容）：
@@ -182,43 +186,54 @@ async def generate_summary(
 ---
 
 請嚴格按照上述 Markdown 格式輸出摘要：""",
-        "en": f"""You are a professional meeting summary assistant. Generate a structured summary based on the following meeting transcript.
+        "en": f"""/nothink
+You are a professional meeting summary assistant. Please output the meeting summary strictly in the following Markdown format.
 
-**Important Rules:**
-1. The summary must be at least 500 words
-2. Do NOT repeat dialogue content from the transcript - summarize and synthesize
-3. Use structured bullet point format
-4. Do NOT add disclaimers, reminders, notes, or any additional explanatory text
-5. Stop immediately after the summary ends
-6. Do NOT say things like "This summary is for reference only" or "For more details, refer to the original"
+IMPORTANT RULES:
+- Only summarize content that is explicitly mentioned in the transcript
+- Do NOT add any information not present in the transcript
+- If a section has no relevant content in the transcript, omit that section entirely
+- Do NOT guess or fabricate any information
 
-**Required Sections:**
+Output requirements:
+- Must use Markdown headings (##)
+- Summarize and synthesize, do not repeat dialogue verbatim
+
+Please output the summary in the following format (no other content):
 
 ## Meeting Topic and Purpose
-[1-2 paragraphs explaining the main purpose and background of the meeting]
+
+(1-2 paragraphs explaining the main purpose and background of the meeting, about 100 words)
 
 ## Main Discussion Points
-1. [Topic 1: 2-3 sentences explaining the discussion content and key points]
-2. [Topic 2: 2-3 sentences explaining the discussion content and key points]
-3. [Topic 3: 2-3 sentences explaining the discussion content and key points]
+
+1. **Topic One**: 2-3 sentences explaining the discussion content and key points.
+2. **Topic Two**: 2-3 sentences explaining the discussion content and key points.
+3. **Topic Three**: 2-3 sentences explaining the discussion content and key points.
 
 ## Important Decisions and Conclusions
-1. [Decision 1: Explain the specific decision or conclusion]
-2. [Decision 2: Explain the specific decision or conclusion]
+
+1. Explain the specific decision or conclusion
+2. Explain the specific decision or conclusion
 
 ## Action Items and Follow-ups
-1. [Action item 1: Responsible person, deadline (if mentioned)]
-2. [Action item 2: Responsible person, deadline (if mentioned)]
+
+1. Action item one: Responsible person, deadline (if mentioned)
+2. Action item two: Responsible person, deadline (if mentioned)
 
 ## Other Important Information
-[Supplementary notes on any other relevant important information]
+
+Supplementary notes on any other relevant important information.
 
 ---
 
-**Meeting Transcript:**
+Meeting transcript:
+
 {transcription_text}
 
-**Please strictly follow the format above and stop immediately after the summary without any additional notes:**""",
+---
+
+Please strictly follow the Markdown format above to output the summary:""",
     }
 
     # 獲取對應語言的 prompt
