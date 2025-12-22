@@ -117,8 +117,8 @@ async def _make_ollama_request(
 
 async def generate_summary(
     transcription_text: str,
+    model: str,
     language: str = "zh",
-    model: str = "llama3.2:latest",
     ollama_api_url: str = f"{settings.OLLAMA_API_URL}/api/generate",
 ) -> tuple[Optional[str], Optional[str]]:
     """
@@ -126,8 +126,8 @@ async def generate_summary(
 
     Args:
         transcription_text: The full transcription text to summarize
+        model: The Ollama model to use
         language: Language for the summary (default: "zh" for Chinese, "en" for English)
-        model: The Ollama model to use (default: llama3.2:latest)
         ollama_api_url: The Ollama API endpoint
 
     Returns:
@@ -138,44 +138,50 @@ async def generate_summary(
 
     # 根據語言選擇不同的 prompt 模板
     prompts = {
-        "zh": f"""你是一個專業的會議記錄摘要助手。請根據以下會議逐字稿生成一個結構化的摘要。
+        "zh": f"""/nothink
+你是專業的會議記錄摘要助手。請嚴格按照以下 Markdown 格式輸出會議摘要。
 
-**重要規則：**
-1. 使用繁體中文輸出
-2. 摘要必須至少 500 字
-3. 不要重複逐字稿的對話內容，要歸納總結
-4. 使用結構化的條列式格式
-5. 不要添加免責聲明、重要提醒、注意事項或任何額外的說明文字
-6. 摘要結束後就停止，不要有任何補充說明
-7. 不要說「本摘要僅供參考」、「如需更多資訊請參考原文」等話語
+輸出格式要求：
+- 必須使用繁體中文
+- 必須使用 Markdown 標題 (##) 格式
+- 摘要總字數至少 500 字
+- 歸納總結，不要逐字複述對話
 
-**必須包含的區段：**
+請直接輸出以下格式的摘要（不要輸出其他內容）：
 
 ## 會議主題與目的
-[用 1-2 段文字說明會議的主要目的和背景]
+
+（用 1-2 段文字說明會議的主要目的和背景，約 100 字）
 
 ## 主要討論事項
-1. [議題一：用 2-3 句話說明討論內容和重點]
-2. [議題二：用 2-3 句話說明討論內容和重點]
-3. [議題三：用 2-3 句話說明討論內容和重點]
+
+1. **議題一標題**：用 2-3 句話說明討論內容和重點。
+2. **議題二標題**：用 2-3 句話說明討論內容和重點。
+3. **議題三標題**：用 2-3 句話說明討論內容和重點。
 
 ## 重要決議與結論
-1. [決議一：說明具體的決定或結論]
-2. [決議二：說明具體的決定或結論]
+
+1. 說明具體的決定或結論
+2. 說明具體的決定或結論
 
 ## 待辦事項與後續行動
-1. [行動項目一：負責人、截止日期（如有提到）]
-2. [行動項目二：負責人、截止日期（如有提到）]
+
+1. 行動項目一：負責人、截止日期（如有提到）
+2. 行動項目二：負責人、截止日期（如有提到）
 
 ## 其他重要資訊
-[補充說明任何其他相關的重要信息]
+
+補充說明其他相關的重要信息。
 
 ---
 
-**會議逐字稿：**
+會議逐字稿如下：
+
 {transcription_text}
 
-**嚴格按照上述格式生成摘要**""",
+---
+
+請嚴格按照上述 Markdown 格式輸出摘要：""",
         "en": f"""You are a professional meeting summary assistant. Generate a structured summary based on the following meeting transcript.
 
 **Important Rules:**
@@ -232,6 +238,17 @@ async def generate_summary(
     if result:
         summary = result.get("response", "").strip()
         if summary:
+            if model == "qwen3:30b":
+                # Remove thinking tags from Qwen3 models
+                if "<think>" in summary:
+                    if "</think>" in summary:
+                        summary = summary.split("</think>")[-1].strip()
+                    else:
+                        summary = summary.split("<think>")[0].strip()
+                
+                # Remove any remaining XML-like tags
+                summary = re.sub(r"<[^>]+>", "", summary).strip()
+            
             if language.lower() == "zh" and summary:
                 try:
                     converter = opencc.OpenCC("s2twp")

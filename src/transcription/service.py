@@ -30,6 +30,7 @@ async def create_transcription(
             srt_path=transcription_data.srt_path,
             language=transcription_data.language,
             status=transcription_data.status,
+            model=transcription_data.model,
             audio_duration=transcription_data.audio_duration,
             extra_metadata=transcription_data.extra_metadata,
         )

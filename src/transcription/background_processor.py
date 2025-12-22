@@ -57,6 +57,7 @@ async def _process_queue():
                         )
                         transcription = result.scalar_one_or_none()
 
+                        logger.info(f"transcription.model: {transcription.model}")
                         if transcription:
                             # Process the task
                             await process_audio(
@@ -126,7 +127,7 @@ async def _generate_metadata(
         if await check_ollama_availability():
             # Generate summary
             logger.info(f"Generating summary for task {task_id}")
-            summary, error_msg = await generate_summary(transcription_text, language, model)
+            summary, error_msg = await generate_summary(transcription_text, model, language)
             if summary:
                 logger.info(f"Successfully generated summary for task {task_id}")
             else:

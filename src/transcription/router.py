@@ -59,7 +59,7 @@ async def transcribe_audio_handler(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = Form(default="zh"),
-    model: str = Form(default="qwen3:30b"),
+    ollama_model: str = Form(default="qwen3:30b"),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Upload an audio file and start async transcription with progress tracking"""
@@ -108,7 +108,7 @@ async def transcribe_audio_handler(
             srt_path=srt_path,
             language=language,
             status="pending",
-            model=model,
+            model=ollama_model,
             audio_duration=audio_duration,
             extra_metadata={
                 "file_size": os.path.getsize(audio_path),
