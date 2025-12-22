@@ -120,7 +120,6 @@ async def generate_summary(
     language: str = "zh",
     model: str = "llama3.2:latest",
     ollama_api_url: str = f"{settings.OLLAMA_API_URL}/api/generate",
-    max_tokens: int = 1500,
 ) -> tuple[Optional[str], Optional[str]]:
     """
     Generate a summary of the transcription using Ollama API
@@ -130,7 +129,6 @@ async def generate_summary(
         language: Language for the summary (default: "zh" for Chinese, "en" for English)
         model: The Ollama model to use (default: llama3.2:latest)
         ollama_api_url: The Ollama API endpoint
-        max_tokens: Maximum tokens for the summary
 
     Returns:
         A tuple of (summary, error_message).

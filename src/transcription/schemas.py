@@ -32,6 +32,7 @@ class CreateTranscriptionParams(BaseModel):
     srt_path: str
     language: str
     status: str
+    model: str
     audio_duration: float = 0.0
     extra_metadata: dict | None = None
 
@@ -48,6 +49,7 @@ class CreateTranscriptionParams(BaseModel):
                     "srt_path": "srt_path",
                     "language": "language",
                     "status": "status",
+                    "model": "model",
                     "audio_duration": 120.5,
                     "extra_metadata": {"key": "value"},
                 }

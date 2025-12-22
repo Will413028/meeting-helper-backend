@@ -65,6 +65,7 @@ async def _process_queue():
                                 output_dir=os.path.dirname(transcription.srt_path),
                                 language=transcription.language,
                                 hug_token=os.getenv("HUG_TOKEN", ""),
+                                model=transcription.model,
                             )
                         else:
                             logger.error(f"Task {task_id} not found in database")
@@ -111,7 +112,7 @@ async def _initialize_task(task_id: str) -> None:
 
 
 async def _generate_metadata(
-    task_id: str, transcription_text: str, language: str
+    task_id: str, transcription_text: str, language: str, model: str
 ) -> Tuple[Optional[str], Optional[list]]:
     """Generate summary and tags if Ollama is available."""
     summary = None
@@ -125,7 +126,7 @@ async def _generate_metadata(
         if await check_ollama_availability():
             # Generate summary
             logger.info(f"Generating summary for task {task_id}")
-            summary, error_msg = await generate_summary(transcription_text, language)
+            summary, error_msg = await generate_summary(transcription_text, language, model)
             if summary:
                 logger.info(f"Successfully generated summary for task {task_id}")
             else:
@@ -263,6 +264,7 @@ async def process_audio(
     output_dir: str,
     language: str,
     hug_token: str,
+    model: str,
 ):
     """Async function to process audio with progress tracking"""
     try:
@@ -327,7 +329,7 @@ async def process_audio(
         # This prevents the task from being stuck in processing state if Ollama hangs
         try:
             summary, tags = await asyncio.wait_for(
-                _generate_metadata(task_id, transcription_text, language),
+                _generate_metadata(task_id, transcription_text, language, model),
                 timeout=360,  # 6 minutes timeout (slightly larger than Ollama timeout)
             )
         except asyncio.TimeoutError:
