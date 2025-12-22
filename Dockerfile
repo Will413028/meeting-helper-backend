@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -11,8 +11,7 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 WORKDIR /app
 
 # Install system dependencies
-RUN --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     curl \
@@ -23,30 +22,41 @@ RUN --mount=type=cache,target=/var/cache/apt \
     python3-venv \
     python3-dev \
     git \
+    wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Install cuDNN 8 libraries (required by pyannote/pytorch-lightning)
+# The container has cuDNN 9 but pyannote needs cuDNN 8's libcudnn_ops_infer.so.8
+RUN wget -q https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-8.9.7.29_cuda12-archive.tar.xz \
+    && tar -xf cudnn-linux-x86_64-8.9.7.29_cuda12-archive.tar.xz \
+    && cp cudnn-linux-x86_64-8.9.7.29_cuda12-archive/lib/*.so* /usr/lib/x86_64-linux-gnu/ \
+    && ldconfig \
+    && rm -rf cudnn-linux-x86_64-8.9.7.29_cuda12-archive* 
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy dependencies first to leverage cache
-COPY pyproject.toml uv.lock ./
+# Copy RTX 5090 specific pyproject.toml (uses PyTorch 2.7.1 + CUDA 12.8)
+COPY pyproject.toml ./
 
-# Install dependencies
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
-
-# Copy project files
+# Copy project source files
 COPY src/ ./src/
 COPY alembic.ini ./
 COPY alembic/ ./alembic/
 
-# Install project
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen
+# Install Python dependencies with uv (regenerate lock file for RTX 5090 deps)
+RUN uv sync
+
+# Copy patch script
+COPY scripts/patch_pytorch_compat.py ./scripts/
 
 # Patch WhisperX for PyTorch 2.x compatibility
 # Fixes IndexError: tensors used as indices must be long, int, byte or bool tensors
 RUN sed -i 's/tokens.clamp(min=0)/tokens.clamp(min=0).long()/g' .venv/lib/python3.12/site-packages/whisperx/alignment.py
+
+# Patch for PyTorch 2.6+ weights_only compatibility
+# PyTorch 2.6+ defaults to weights_only=True which breaks pyannote model loading
+RUN .venv/bin/python scripts/patch_pytorch_compat.py
 
 # Create necessary directories
 RUN mkdir -p uploads logs
