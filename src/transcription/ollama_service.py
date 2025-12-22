@@ -221,21 +221,10 @@ async def generate_summary(
     prompt = prompts.get(language.lower(), prompts["zh"])
 
     # Prepare the request payload
-    # 增強防止重複的參數設定
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {
-            "num_predict": max_tokens,
-            "temperature": 0.3,
-            "top_p": 0.9,
-            "repeat_penalty": 1.5,  # 提高重複懲罰 (從 1.2 增加到 1.5)
-            "repeat_last_n": 256,  # 檢查最後 256 個 token 來避免重複
-            "frequency_penalty": 0.5,  # 根據頻率懲罰重複 token
-            "presence_penalty": 0.3,  # 鼓勵生成新的 token
-            "num_ctx": 8192,  # 增加上下文長度以提供更好的記憶
-        },
     }
 
     result, error_msg = await _make_ollama_request(
@@ -245,42 +234,6 @@ async def generate_summary(
     if result:
         summary = result.get("response", "").strip()
         if summary:
-            # Check if summary meets minimum length requirement
-            if len(summary) < 100:
-                logger.warning(
-                    f"Generated summary is too short ({len(summary)} characters), regenerating..."
-                )
-                # 根據語言準備增強的提示詞
-                length_reminder = {
-                    "zh": "\n\n請注意：摘要必須至少500字以上，請提供更詳細的內容。記得使用繁體中文，不要添加任何提醒。",
-                    "en": "\n\nPlease note: The summary must be at least 100 words. Please provide more detailed content. Do not add any reminders.",
-                }
-                enhanced_prompt = prompt + length_reminder.get(
-                    language.lower(), length_reminder["zh"]
-                )
-
-                enhanced_payload = {
-                    "model": model,
-                    "prompt": enhanced_prompt,
-                    "stream": False,
-                    "options": {
-                        "num_predict": max_tokens * 2,
-                        "temperature": 0.3,
-                        "top_p": 0.9,
-                        "repeat_penalty": 1.2,
-                        "stop": payload["options"].get("stop"),
-                    },
-                }
-
-                retry_result, retry_error = await _make_ollama_request(
-                    ollama_api_url,
-                    json_data=enhanced_payload,
-                    timeout=OLLAMA_GENERATE_TIMEOUT,
-                )
-                if retry_result:
-                    summary = retry_result.get("response", "").strip()
-
-            # Enforce Traditional Chinese if requested
             if language.lower() == "zh" and summary:
                 try:
                     converter = opencc.OpenCC("s2twp")
