@@ -59,7 +59,7 @@ async def transcribe_audio_handler(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     language: str = Form(default="zh"),
-    ollama_model: str = Form(default="gemma3:27b"),
+    ollama_model: str = Form(default="qwen3:30b"),
     session: AsyncSession = Depends(get_db_session),
 ):
     """Upload an audio file and start async transcription with progress tracking"""
